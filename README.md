@@ -64,6 +64,46 @@ npm run dev
 
 Uygulama [http://localhost:3000](http://localhost:3000) adresinde çalışacaktır.
 
+## Production Sunucusu
+
+### Standart Başlatma
+
+Production sunucusunu normal şekilde başlatmak için:
+
+```bash
+npm run build
+npm run server
+```
+
+Sunucu başlatılırken otomatik güncelleme sistemi açılmayı sorar.
+
+### Otomatik Güncelleme ile Başlatma
+
+Otomatik güncellemeyi parametre ile aktifleştirmek için:
+
+```bash
+npm run build
+npm run server:update
+```
+
+veya:
+
+```bash
+npm run build
+npm run server -- --enable-update
+```
+
+### Otomatik Güncelleme Sistemi
+
+Otomatik güncelleme sistemi aktifleştirildiğinde:
+- Her gün saat 00:00'da GitHub'dan yeni değişiklikler kontrol edilir
+- Sadece değişen dosyalar indirilir (git pull)
+- package.json değiştiyse `npm install` çalıştırılır
+- Prisma schema değiştiyse migration'lar uygulanır
+- Güncelleme logları `update.log` dosyasına yazılır
+
+**Önemli:** Güncelleme sonrası sunucuyu manuel olarak yeniden başlatmanız gerekir.
+
 ## Veritabanı Yapısı
 
 ### Kullanıcı Alanları
