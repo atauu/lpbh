@@ -1,0 +1,268 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String   @id @default(cuid())
+  username              String   @unique
+  password              String
+  rutbe                 String?  // Rütbe
+  isim                  String?  // İsim
+  soyisim               String?  // Soyisim
+  tckn                  String?  // TC Kimlik No
+  telefon               String?  // Telefon numarası
+  evAdresi              String?  @map("ev_adresi") // Ev adresi
+  yakiniIsmi            String?  @map("yakini_ismi") // Yakını ismi
+  yakiniTelefon         String?  @map("yakini_telefon") // Yakını telefon numarası
+  ruhsatSeriNo          String?  @map("ruhsat_seri_no") // Ruhsat seri no
+  kanGrubu              String?  @map("kan_grubu") // Kan grubu
+  
+  // Üyelik durumu
+  membershipStatus      String   @default("pending_info") @map("membership_status") // "pending_info" | "pending_approval" | "approved" | "rejected"
+  registrationToken     String?  @unique @map("registration_token") // Bilgilerini girmek için token
+  
+  // 2FA (Microsoft Authenticator) alanları
+  twoFactorSecret       String?  @map("two_factor_secret") // TOTP secret key
+  twoFactorEnabled       Boolean  @default(false) @map("two_factor_enabled") // 2FA aktif mi?
+  
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  
+  // NextAuth için gerekli alanlar
+  accounts              Account[]
+  sessions              Session[]
+  
+  // Toplantı kayıtları ilişkisi
+  meetingAttendances    MeetingAttendance[]
+  // Etkinlikler ilişkisi
+  events                Event[]
+  // Etkinlik katılımları ilişkisi
+  eventAttendances      EventAttendance[]
+  // Görevlendirmeler ilişkileri
+  assignedTasks         Assignment[] @relation("Assignee") // Kendisine atanan görevler
+  assignedByMe           Assignment[] @relation("Assigner") // Kendisinin atadığı görevler
+  // Rotalar ilişkisi
+  routes                 Route[]      @relation("RouteCreator") // Oluşturduğu rotalar
+  // Duyurular ilişkisi
+  announcements          Announcement[] @relation("AnnouncementCreator") // Oluşturduğu duyurular
+  // İşlem kayıtları ilişkisi
+  activityLogs           ActivityLog[]
+
+  @@map("users")
+}
+
+// NextAuth.js için gerekli modeller
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// Toplantı Kayıtları
+model Meeting {
+  id              String   @id @default(cuid())
+  title           String   // Toplantı başlığı/konusu
+  meetingDate     DateTime  @map("meeting_date") // Toplantı tarihi
+  filePath        String   @map("file_path") // PDF dosya yolu
+  fileName        String   @map("file_name") // Orijinal dosya adı
+  fileSize        Int      @map("file_size") // Dosya boyutu (bytes)
+  content         String?  @db.Text // PDF içeriği (arama için)
+  visibility      String   @default("herkes") // "yönetim" | "member" | "herkes"
+  uploadedBy      String   @map("uploaded_by") // Yükleyen kullanıcı ID
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  attendances     MeetingAttendance[]
+
+  @@map("meetings")
+}
+
+// Toplantıya katılım kayıtları
+model MeetingAttendance {
+  id        String   @id @default(cuid())
+  meetingId String   @map("meeting_id")
+  userId    String   @map("user_id")
+  attended  Boolean  @default(true) // Katıldı mı?
+  
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([meetingId, userId])
+  @@map("meeting_attendances")
+}
+
+model Event {
+  id          String   @id @default(cuid())
+  title       String   // Etkinlik adı
+  eventDate   DateTime  @map("event_date") // Etkinlik tarihi
+  location    String   @db.Text // Lokasyon (adres)
+  locationUrl String?  @map("location_url") @db.Text // Google Maps link veya embed URL
+  description String?  @db.Text // Etkinlik detayları (opsiyonel)
+  plannedBy   String   @map("planned_by") // Planlayan kullanıcı ID
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  planner     User     @relation(fields: [plannedBy], references: [id], onDelete: Cascade)
+  attendances EventAttendance[] // Etkinlik katılımları
+
+  @@map("events")
+}
+
+model EventAttendance {
+  id        String   @id @default(cuid())
+  eventId   String   @map("event_id")
+  userId    String   @map("user_id")
+  status    String   // 'attending' | 'not_attending' | null (cevapsız)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+  @@map("event_attendances")
+}
+
+model Assignment {
+  id                String   @id @default(cuid())
+  assignerId        String   @map("assigner_id") // Görevlendiren kullanıcı ID
+  assigneeId        String   @map("assignee_id") // Görevlendirilen kullanıcı ID
+  task              String   @db.Text // Görev açıklaması
+  issueDate         DateTime @map("issue_date") // Görev ibraz tarihi
+  expectedDelivery  DateTime @map("expected_delivery") // Beklenilen teslim tarihi
+  actualDelivery    DateTime? @map("actual_delivery") // Gerçek teslim tarihi (null olabilir)
+  status            String   @default("pending") // 'pending' | 'completed' | 'cancelled'
+  visibility        String   @default("herkes") // "yönetim" | "member" | "herkes"
+  details           String?  @db.Text // Görev detayları
+  files             String[] // Dosya yolları array
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  
+  assigner          User     @relation("Assigner", fields: [assignerId], references: [id], onDelete: Cascade)
+  assignee          User     @relation("Assignee", fields: [assigneeId], references: [id], onDelete: Cascade)
+
+  @@map("assignments")
+}
+
+model Route {
+  id          String   @id @default(cuid())
+  name        String   // Rota ismi
+  startPoint  String   @map("start_point") // Kalkış noktası
+  endPoint    String   @map("end_point") // Varış noktası
+  url         String   @db.Text // Google Maps directions URL
+  waypoints   Json     // Duraklar array: [{name: string, googleMapsLink: string | null}]
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdBy   String   @map("created_by") // Oluşturan kullanıcı ID
+
+  creator     User     @relation("RouteCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@map("routes")
+}
+
+// Rütbe Grupları
+model RoleGroup {
+  id          String   @id @default(cuid())
+  name        String   @unique // Grup adı (örn: "Yönetim", "Member", "Aday")
+  description String?  @db.Text // Açıklama
+  order       Int      @default(0) // Sıralama (0: Aday, 1: Member, 2: Yönetim)
+  roles       Role[]   // Bu gruba ait rütbeler
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("role_groups")
+}
+
+// Rütbe (Role) ve Yetkilendirme
+model Role {
+  id          String     @id @default(cuid())
+  name        String     @unique // Rütbe adı (örn: "PRESIDENT", "MEMBER")
+  description String?    @db.Text // Açıklama
+  groupId     String?    @map("group_id") // Grup ID (opsiyonel)
+  permissions Json       // İzinler: { users: {create, read, update, delete}, meetings: {...}, events: {...}, assignments: {...}, routes: {...}, announcements: {...} }
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  
+  group       RoleGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  @@map("roles")
+}
+
+// Duyurular
+model Announcement {
+  id          String   @id @default(cuid())
+  title       String   // Duyuru başlığı
+  content     String   @db.Text // Duyuru içeriği
+  visibility  String   // "yönetim" | "member" | "herkes"
+  importance  String   @default("normal") // "düşük" | "normal" | "yüksek"
+  createdBy   String   @map("created_by") // Oluşturan kullanıcı ID
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  creator     User     @relation("AnnouncementCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+
+  @@map("announcements")
+}
+
+// İşlem Kayıtları (Activity Log)
+model ActivityLog {
+  id          String   @id @default(cuid())
+  userId      String   @map("user_id") // İşlemi yapan kullanıcı ID
+  action      String   // İşlem türü (örn: "login_success", "login_failed", "profile_update", vb.)
+  description String   @db.Text // Türkçe açıklama
+  ipAddress   String?  @map("ip_address") // IP adresi (opsiyonel)
+  userAgent   String?  @map("user_agent") @db.Text // User agent (opsiyonel)
+  metadata    Json?    // Ek veriler (örnek: { reason: "..." })
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("activity_logs")
+}
+

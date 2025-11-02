@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #31ab43;
+  --background: #0a0a0a;
+  --background-secondary: #1a1a1a;
+  --background-tertiary: #2a2a2a;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: var(--background);
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Mobil performans iyileştirmeleri */
+@media (max-width: 1024px) {
+  * {
+    /* Touch lag'i önlemek için */
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  /* Smooth scrolling iOS'ta */
+  html {
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Butonlar için 300ms touch delay'ini kaldır */
+  button,
+  a,
+  [role="button"],
+  input[type="submit"],
+  input[type="button"],
+  .cursor-pointer {
+    touch-action: manipulation;
+    -webkit-touch-callout: none;
+  }
+}
+

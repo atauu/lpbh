@@ -1,0 +1,36 @@
+{
+  "name": "LPBH Fonksiyonel Organizasyon Paneli",
+  "short_name": "LPBH FOP",
+  "description": "Los Perdidos Brotherhood Fonksiyonel Organizasyon Paneli",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0f0f0f",
+  "theme_color": "#31ab43",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/lpbhlogo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/lpbhlogo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["productivity", "business"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Ana Ekran",
+      "description": "Ana sayfaya git",
+      "url": "/dashboard",
+      "icons": [{ "src": "/lpbhlogo.png", "sizes": "96x96" }]
+    }
+  ]
+}
+
