@@ -29,6 +29,8 @@ interface Role {
     roles?: { create: boolean; read: boolean; update: boolean; delete: boolean };
     announcements?: { create: boolean; read: boolean; update: boolean; delete: boolean };
     activityLogs?: { read: boolean };
+    researches?: { create: boolean; read: boolean; update: boolean; delete: boolean };
+    messages?: { create: boolean; read: boolean; update: boolean; delete: boolean };
   };
   createdAt: string;
   updatedAt: string;
@@ -44,6 +46,8 @@ interface FormPermissions {
   roles: { create: boolean; read: boolean; update: boolean; delete: boolean };
   announcements: { create: boolean; read: boolean; update: boolean; delete: boolean };
   activityLogs: { read: boolean };
+  researches: { create: boolean; read: boolean; update: boolean; delete: boolean };
+  messages: { create: boolean; read: boolean; update: boolean; delete: boolean };
 }
 
 export default function YetkilendirmePage() {
@@ -88,6 +92,8 @@ export default function YetkilendirmePage() {
       roles: { create: false, read: false, update: false, delete: false },
       announcements: { create: false, read: false, update: false, delete: false },
       activityLogs: { read: false },
+      researches: { create: false, read: false, update: false, delete: false },
+      messages: { create: false, read: false, update: false, delete: false },
     },
     // Üyeler için okunabilir alanlar
     usersReadableFields: [] as string[],
@@ -181,6 +187,8 @@ export default function YetkilendirmePage() {
         roles: { create: false, read: false, update: false, delete: false },
         announcements: { create: false, read: false, update: false, delete: false },
         activityLogs: { read: false },
+        researches: { create: false, read: false, update: false, delete: false },
+        messages: { create: false, read: false, update: false, delete: false },
       },
       usersReadableFields: [],
     });
@@ -217,6 +225,8 @@ export default function YetkilendirmePage() {
       roles: role.permissions.roles || { create: false, read: false, update: false, delete: false },
       announcements: role.permissions.announcements || { create: false, read: false, update: false, delete: false },
       activityLogs: (role.permissions as any).activityLogs || { read: false },
+      researches: (role.permissions as any).researches || { create: false, read: false, update: false, delete: false },
+      messages: (role.permissions as any).messages || { create: false, read: false, update: false, delete: false },
     };
     
     setFormData({
@@ -290,6 +300,8 @@ export default function YetkilendirmePage() {
           roles: { create: false, read: false, update: false, delete: false },
           announcements: { create: false, read: false, update: false, delete: false },
           activityLogs: { read: false },
+          researches: { create: false, read: false, update: false, delete: false },
+          messages: { create: false, read: false, update: false, delete: false },
         },
         usersReadableFields: [],
       });
@@ -410,6 +422,34 @@ export default function YetkilendirmePage() {
           },
         },
       });
+    } else if (resource === 'researches') {
+      // researches için normal CRUD
+      setFormData({
+        ...formData,
+        permissions: {
+          ...formData.permissions,
+          researches: {
+            create: true,
+            read: true,
+            update: true,
+            delete: true,
+          },
+        },
+      });
+    } else if (resource === 'messages') {
+      // messages için normal CRUD
+      setFormData({
+        ...formData,
+        permissions: {
+          ...formData.permissions,
+          messages: {
+            create: true,
+            read: true,
+            update: true,
+            delete: true,
+          },
+        },
+      });
     } else {
       setFormData({
         ...formData,
@@ -464,6 +504,34 @@ export default function YetkilendirmePage() {
           },
         },
       });
+    } else if (resource === 'researches') {
+      // researches için normal CRUD
+      setFormData({
+        ...formData,
+        permissions: {
+          ...formData.permissions,
+          researches: {
+            create: false,
+            read: false,
+            update: false,
+            delete: false,
+          },
+        },
+      });
+    } else if (resource === 'messages') {
+      // messages için normal CRUD
+      setFormData({
+        ...formData,
+        permissions: {
+          ...formData.permissions,
+          messages: {
+            create: false,
+            read: false,
+            update: false,
+            delete: false,
+          },
+        },
+      });
     } else {
       setFormData({
         ...formData,
@@ -490,6 +558,8 @@ export default function YetkilendirmePage() {
     roles: 'Yetkilendirme',
     announcements: 'Duyurular',
     activityLogs: 'İşlem Kayıtları',
+    researches: 'Araştırmalar',
+    messages: 'Sohbet',
   };
 
   const actionLabels: Record<string, string> = {
@@ -527,6 +597,16 @@ export default function YetkilendirmePage() {
       } else if (resource === 'activityLogs') {
         // activityLogs için özel kontrol (sadece read)
         if (!perms || !perms.read) {
+          return false;
+        }
+      } else if (resource === 'researches') {
+        // researches için normal kontrol
+        if (!perms || !perms.create || !perms.read || !perms.update || !perms.delete) {
+          return false;
+        }
+      } else if (resource === 'messages') {
+        // messages için normal kontrol
+        if (!perms || !perms.create || !perms.read || !perms.update || !perms.delete) {
           return false;
         }
       } else {
@@ -835,6 +915,8 @@ export default function YetkilendirmePage() {
                 roles: { create: false, read: false, update: false, delete: false },
                 announcements: { create: false, read: false, update: false, delete: false },
                 activityLogs: { read: false },
+                researches: { create: false, read: false, update: false, delete: false },
+                messages: { create: false, read: false, update: false, delete: false },
               },
               usersReadableFields: [],
             });
@@ -870,6 +952,8 @@ export default function YetkilendirmePage() {
                         roles: { create: false, read: false, update: false, delete: false },
                         announcements: { create: false, read: false, update: false, delete: false },
                         activityLogs: { read: false },
+                        researches: { create: false, read: false, update: false, delete: false },
+                        messages: { create: false, read: false, update: false, delete: false },
                       },
                       usersReadableFields: [],
                     });
@@ -1101,6 +1185,8 @@ export default function YetkilendirmePage() {
                           roles: { create: false, read: false, update: false, delete: false },
                           announcements: { create: false, read: false, update: false, delete: false },
                           activityLogs: { read: false },
+                          researches: { create: false, read: false, update: false, delete: false },
+                          messages: { create: false, read: false, update: false, delete: false },
                         },
                         usersReadableFields: [],
                       });

@@ -8,6 +8,8 @@ import { existsSync } from 'fs';
 import { hasPermission } from '@/lib/auth';
 import { logActivity, getActivityDescription } from '@/lib/activityLogger';
 
+export const dynamic = 'force-dynamic';
+
 // GET: Tüm toplantı kayıtlarını listele
 export async function GET(request: NextRequest) {
   try {
@@ -223,14 +225,19 @@ export async function POST(request: NextRequest) {
     try {
       // pdfjs-dist worker'ını yapılandır (server-side'da worker gerekmez)
       // Bu hatayı önlemek için: "Cannot find module './pdf.worker.mjs'"
+      // pdfjs-dist paketi yoksa veya hata verirse devam et, sadece pdf-parse kullanılacak
       try {
+        // pdfjs-dist paketinin varlığını kontrol et
+        require.resolve('pdfjs-dist/legacy/build/pdf.js');
         const pdfjs = require('pdfjs-dist/legacy/build/pdf.js');
-        if (pdfjs.GlobalWorkerOptions) {
+        if (pdfjs && pdfjs.GlobalWorkerOptions) {
           // Worker'ı disable et - server-side'da gerekmez
           pdfjs.GlobalWorkerOptions.workerSrc = false;
         }
-      } catch (workerConfigError) {
+      } catch (workerConfigError: any) {
         // Worker config hatası önemli değil, devam et
+        // pdfjs-dist paketi yoksa veya modül bulunamazsa sorun değil
+        // sadece pdf-parse kullanılacak
       }
       
       // pdf-parse'ı require et (webpack externals sayesinde bundle edilmeden)

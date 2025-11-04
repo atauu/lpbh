@@ -77,6 +77,21 @@ interface Announcement {
   };
 }
 
+interface Research {
+  id: string;
+  title: string;
+  content: string;
+  fileName: string | null;
+  createdAt: string;
+  creator: {
+    id: string;
+    username: string;
+    isim: string | null;
+    soyisim: string | null;
+    rutbe: string | null;
+  };
+}
+
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const searchParams = useSearchParams();
@@ -84,6 +99,7 @@ export default function DashboardPage() {
   const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
   const [pendingAssignments, setPendingAssignments] = useState<Assignment[]>([]);
   const [recentAnnouncements, setRecentAnnouncements] = useState<Announcement[]>([]);
+  const [recentResearches, setRecentResearches] = useState<Research[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -174,6 +190,21 @@ export default function DashboardPage() {
           })
           .slice(0, 5);
         setRecentAnnouncements(sorted);
+      }
+
+      // Son araştırmaları getir
+      const researchesRes = await fetch('/api/researches?limit=5', {
+        credentials: 'include',
+      });
+      if (researchesRes.ok) {
+        const researchesData = await researchesRes.json();
+        const sorted = researchesData
+          .sort((a: Research, b: Research) => {
+            // Tarihe göre sırala (yeniler önce)
+            return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+          })
+          .slice(0, 5);
+        setRecentResearches(sorted);
       }
     } catch (error: any) {
       setError(error.message || 'Veriler yüklenemedi');
@@ -450,6 +481,51 @@ export default function DashboardPage() {
                         </p>
                       </div>
                     </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-1 gap-2 lg:gap-6">
+        {/* Son Araştırmalar */}
+        <div className="bg-background-secondary rounded-md border border-gray-700 overflow-hidden backdrop-blur-sm">
+          <div className="p-2 lg:p-4 border-b border-gray-700 flex justify-between items-center">
+            <h2 className="text-xs lg:text-xl font-semibold text-white">Son Araştırmalar</h2>
+            <Link
+              href="/dashboard/arastirmalar"
+              className="text-primary text-xs lg:text-sm hover:text-primary/80 transition-all"
+            >
+              Tümünü Gör
+            </Link>
+          </div>
+          {recentResearches.length === 0 ? (
+            <div className="p-4 lg:p-8 text-center text-gray-400">
+              <p className="text-xs">Henüz araştırma eklenmemiş</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-700">
+              {recentResearches.map((research) => (
+                <Link
+                  key={research.id}
+                  href="/dashboard/arastirmalar"
+                  className="block p-2 lg:p-4 hover:bg-background-tertiary transition-all"
+                >
+                  <h3 className="text-white font-medium mb-1 text-xs lg:text-base">{research.title}</h3>
+                  <p className="text-[10px] lg:text-sm text-gray-400 line-clamp-2 mb-1">
+                    {research.content}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    {research.fileName && (
+                      <span className="text-[10px] lg:text-xs text-gray-500 px-1.5 py-0.5 bg-background rounded border border-gray-700">
+                        📎 {research.fileName}
+                      </span>
+                    )}
+                    <p className="text-[10px] lg:text-xs text-gray-500 truncate">
+                      {research.creator.rutbe || ''} {research.creator.isim || ''} {research.creator.soyisim || ''} - {formatDate(research.createdAt)}
+                    </p>
                   </div>
                 </Link>
               ))}

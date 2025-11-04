@@ -18,6 +18,24 @@ async function main() {
   });
 
   console.log('✅ İlk kullanıcı oluşturuldu:', user.username);
+
+  // President kullanıcısını oluştur
+  const presidentPassword = await bcrypt.hash('president', 10);
+  const president = await prisma.user.upsert({
+    where: { username: 'thepresident' },
+    update: {
+      password: presidentPassword,
+      rutbe: 'PRESIDENT',
+    },
+    create: {
+      username: 'thepresident',
+      password: presidentPassword,
+      rutbe: 'PRESIDENT',
+      membershipStatus: 'approved',
+    },
+  });
+
+  console.log('✅ President kullanıcı oluşturuldu:', president.username);
 }
 
 main()

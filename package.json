@@ -26,6 +26,8 @@
     "qrcode": "^1.5.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-pdf": "^7.7.2",
+    "emoji-picker-react": "^4.5.16",
     "speakeasy": "^2.0.0",
     "zod": "^3.23.8"
   },
@@ -37,6 +39,7 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@types/speakeasy": "^2.0.9",
+    "pdfjs-dist": "^3.11.174",
     "autoprefixer": "^10.4.19",
     "eslint": "^8.57.0",
     "eslint-config-next": "14.2.5",

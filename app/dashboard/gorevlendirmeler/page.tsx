@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { redirect } from 'next/navigation';
 import { hasPermission } from '@/lib/auth';
+import PDFViewer from '@/components/PDFViewer';
 
 interface Assignment {
   id: string;
@@ -54,6 +55,10 @@ export default function GorevlendirmelerPage() {
   const [showViewModal, setShowViewModal] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [deletingAssignmentId, setDeletingAssignmentId] = useState<string | null>(null);
+  const [viewingFile, setViewingFile] = useState<{ url: string; fileName: string; type: 'image' | 'video' | 'other' } | null>(null);
+  const [viewingPdfUrl, setViewingPdfUrl] = useState<string | null>(null);
+  const [viewingPdfTitle, setViewingPdfTitle] = useState<string>('');
+  const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -354,6 +359,35 @@ export default function GorevlendirmelerPage() {
       parts.push(`${assigner.isim || ''} ${assigner.soyisim || ''}`.trim());
     }
     return parts.length > 0 ? parts.join(' ') : assigner.username;
+  };
+
+  const getFileType = (fileName: string): 'image' | 'video' | 'other' => {
+    const extension = fileName.toLowerCase().split('.').pop();
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(extension || '')) {
+      return 'image';
+    }
+    if (['mp4', 'webm', 'ogg', 'mov'].includes(extension || '')) {
+      return 'video';
+    }
+    return 'other';
+  };
+
+  const handleViewFile = (assignmentId: string, fileIndex: number, fileName: string) => {
+    const fileType = getFileType(fileName);
+    
+    // PDF dosyaları için PDFViewer kullan
+    if (fileName.toLowerCase().endsWith('.pdf')) {
+      setViewingPdfUrl(`/api/assignments/${assignmentId}/file?index=${fileIndex}`);
+      setViewingPdfTitle(fileName);
+      setPdfViewerOpen(true);
+    } else {
+      // Diğer dosyalar için mevcut viewer
+      setViewingFile({
+        url: `/api/assignments/${assignmentId}/file?index=${fileIndex}`,
+        fileName,
+        type: fileType,
+      });
+    }
   };
 
   if (status === 'loading' || isLoading) {
@@ -877,18 +911,31 @@ export default function GorevlendirmelerPage() {
                         {viewingAssignment.files.map((filePath, index) => {
                           const fileName = filePath.split('/').pop() || 'Dosya';
                           const isMarkedForDelete = viewFormData.filesToDelete.includes(filePath);
+                          const fileType = getFileType(fileName);
+                          const canPreview = fileType === 'image' || fileType === 'video';
                           return (
                             <div key={index} className="flex items-center gap-2">
-                              <a
-                                href={`/api/assignments/${viewingAssignment.id}/file?index=${index}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={`flex-1 px-3 py-2 border border-gray-700 text-white bg-background rounded-md hover:bg-background-tertiary transition-all text-sm ${
-                                  isMarkedForDelete ? 'line-through opacity-50' : ''
-                                }`}
-                              >
-                                {fileName}
-                              </a>
+                              {canPreview ? (
+                                <button
+                                  onClick={() => handleViewFile(viewingAssignment.id, index, fileName)}
+                                  className={`flex-1 px-3 py-2 border border-gray-700 text-white bg-background rounded-md hover:bg-background-tertiary transition-all text-sm text-left ${
+                                    isMarkedForDelete ? 'line-through opacity-50' : ''
+                                  }`}
+                                >
+                                  {fileName}
+                                </button>
+                              ) : (
+                                <a
+                                  href={`/api/assignments/${viewingAssignment.id}/file?index=${index}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className={`flex-1 px-3 py-2 border border-gray-700 text-white bg-background rounded-md hover:bg-background-tertiary transition-all text-sm ${
+                                    isMarkedForDelete ? 'line-through opacity-50' : ''
+                                  }`}
+                                >
+                                  {fileName}
+                                </a>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => {
@@ -976,19 +1023,47 @@ export default function GorevlendirmelerPage() {
                   {viewingAssignment.files.length > 0 && (
                     <div>
                       <p className="text-sm font-medium text-gray-300 mb-2">Dosyalar:</p>
-                      <div className="space-y-2">
+                      <div className="space-y-3">
                         {viewingAssignment.files.map((filePath, index) => {
                           const fileName = filePath.split('/').pop() || 'Dosya';
+                          const fileType = getFileType(fileName);
+                          const canPreview = fileType === 'image' || fileType === 'video';
+                          const isImage = fileType === 'image';
                           return (
-                            <div key={index}>
-                              <a
-                                href={`/api/assignments/${viewingAssignment.id}/file?index=${index}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="block px-3 py-2 border border-gray-700 text-white bg-background rounded-md hover:bg-background-tertiary transition-all text-sm"
-                              >
-                                {fileName}
-                              </a>
+                            <div key={index} className="space-y-1">
+                              {isImage ? (
+                                <div className="border border-gray-700 rounded-md overflow-hidden bg-background">
+                                  <button
+                                    onClick={() => handleViewFile(viewingAssignment.id, index, fileName)}
+                                    className="w-full hover:opacity-90 transition-opacity"
+                                  >
+                                    <img
+                                      src={`/api/assignments/${viewingAssignment.id}/file?index=${index}`}
+                                      alt={fileName}
+                                      className="w-full h-auto max-h-64 object-contain"
+                                    />
+                                  </button>
+                                  <div className="px-3 py-2 border-t border-gray-700">
+                                    <p className="text-xs text-gray-400 truncate">{fileName}</p>
+                                  </div>
+                                </div>
+                              ) : canPreview ? (
+                                <button
+                                  onClick={() => handleViewFile(viewingAssignment.id, index, fileName)}
+                                  className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md hover:bg-background-tertiary transition-all text-sm text-left"
+                                >
+                                  {fileName}
+                                </button>
+                              ) : (
+                                <a
+                                  href={`/api/assignments/${viewingAssignment.id}/file?index=${index}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="block px-3 py-2 border border-gray-700 text-white bg-background rounded-md hover:bg-background-tertiary transition-all text-sm"
+                                >
+                                  {fileName}
+                                </a>
+                              )}
                             </div>
                           );
                         })}
@@ -1017,6 +1092,62 @@ export default function GorevlendirmelerPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* File Viewer Modal */}
+      {viewingFile && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+          onClick={() => setViewingFile(null)}
+        >
+          <div
+            className="bg-background-secondary rounded-md shadow-2xl max-w-7xl w-full max-h-[90vh] m-4 flex flex-col border border-gray-700 backdrop-blur-sm"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex justify-between items-center p-4 border-b border-gray-700">
+              <h2 className="text-xl font-semibold text-white">{viewingFile.fileName}</h2>
+              <button
+                onClick={() => setViewingFile(null)}
+                className="text-gray-400 hover:text-white transition-all text-2xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+            
+            {/* Media Viewer */}
+            <div className="flex-1 overflow-auto p-4 flex items-center justify-center">
+              {viewingFile.type === 'image' ? (
+                <img
+                  src={viewingFile.url}
+                  alt={viewingFile.fileName}
+                  className="max-w-full max-h-[calc(90vh-120px)] object-contain"
+                />
+              ) : viewingFile.type === 'video' ? (
+                <video
+                  src={viewingFile.url}
+                  controls
+                  className="max-w-full max-h-[calc(90vh-120px)]"
+                >
+                  Tarayıcınız video oynatmayı desteklemiyor.
+                </video>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PDF Viewer Modal */}
+      {pdfViewerOpen && viewingPdfUrl && (
+        <PDFViewer
+          url={viewingPdfUrl}
+          title={viewingPdfTitle}
+          onClose={() => {
+            setPdfViewerOpen(false);
+            setViewingPdfUrl(null);
+            setViewingPdfTitle('');
+          }}
+        />
       )}
     </div>
   );

@@ -100,6 +100,18 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       action: 'read',
     },
     {
+      name: 'Araştırmalar',
+      href: '/dashboard/arastirmalar',
+      resource: 'researches',
+      action: 'read',
+    },
+    {
+      name: 'Sohbet',
+      href: '/dashboard/sohbet',
+      resource: null, // Herkes görebilmeli
+      action: null,
+    },
+    {
       name: 'Yetkilendirme',
       href: '/dashboard/yetkilendirme',
       resource: 'roles',
@@ -230,9 +242,9 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 lg:ml-64 overflow-auto">
+      <main className={`flex-1 lg:ml-64 ${pathname === '/dashboard/sohbet' ? 'overflow-hidden flex flex-col h-screen lg:h-screen' : 'overflow-auto'}`}>
         {/* Mobile Header */}
-        <div className="lg:hidden bg-background-secondary border-b border-gray-700 p-4 flex items-center gap-3 sticky top-0 z-30">
+        <div className={`lg:hidden bg-background-secondary border-b border-gray-700 p-4 flex items-center gap-3 ${pathname === '/dashboard/sohbet' ? 'flex-shrink-0' : 'sticky top-0'} z-30`}>
           <button
             onClick={() => setSidebarOpen(true)}
             className="text-gray-400 hover:text-white"
@@ -252,7 +264,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
             <h1 className="text-lg font-bold text-white">LPBH FOP</h1>
           </div>
         </div>
-        <div className="p-4 lg:p-6">
+        <div className={pathname === '/dashboard/sohbet' ? 'p-0 flex-1 min-h-0' : 'p-4 lg:p-6'}>
           {children}
         </div>
       </main>

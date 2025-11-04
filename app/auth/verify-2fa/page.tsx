@@ -20,6 +20,9 @@ export default function Verify2FAPage() {
     const checkPendingLogin = () => {
       if (!mounted) return;
       
+      // Client-side kontrolü
+      if (typeof window === 'undefined') return;
+      
       const pendingUsername = sessionStorage.getItem('pendingLoginUsername');
       const pendingPassword = sessionStorage.getItem('pendingLoginPassword');
       
@@ -32,6 +35,9 @@ export default function Verify2FAPage() {
       // Biraz bekle çünkü login sayfasından yönlendirme sırasında sessionStorage'a yazılıyor olabilir
       redirectTimeout = setTimeout(() => {
         if (!mounted) return;
+        
+        // Client-side kontrolü
+        if (typeof window === 'undefined') return;
         
         const finalPendingUsername = sessionStorage.getItem('pendingLoginUsername');
         const finalPendingPassword = sessionStorage.getItem('pendingLoginPassword');
@@ -97,6 +103,10 @@ export default function Verify2FAPage() {
       // çünkü authorize fonksiyonu hem username/password hem de token'ı kontrol ediyor
 
       // Pending username ve password'u kontrol et (session olsa da olmasa da)
+      if (typeof window === 'undefined') {
+        throw new Error('Oturum bulunamadı. Lütfen tekrar giriş yapın.');
+      }
+      
       const pendingUsername = sessionStorage.getItem('pendingLoginUsername');
       const pendingPassword = sessionStorage.getItem('pendingLoginPassword');
       
@@ -142,10 +152,12 @@ export default function Verify2FAPage() {
       }
 
       // Login başarılı, pending bilgileri temizle ve dashboard'a yönlendir
-      sessionStorage.removeItem('pendingLoginUsername');
-      sessionStorage.removeItem('pendingLoginPassword');
-      sessionStorage.removeItem('loginInProgress'); // Login flow tamamlandı
-      sessionStorage.removeItem('logoutOnClose'); // Logout flag'ini de temizle
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('pendingLoginUsername');
+        sessionStorage.removeItem('pendingLoginPassword');
+        sessionStorage.removeItem('loginInProgress'); // Login flow tamamlandı
+        sessionStorage.removeItem('logoutOnClose'); // Logout flag'ini de temizle
+      }
       
       // Session'ı güncelle (2FA enabled bilgisini yenile)
       await updateSession();
@@ -173,9 +185,9 @@ export default function Verify2FAPage() {
     }
   };
 
-  // Pending login bilgilerini kontrol et (her render'da)
-  const pendingUsername = sessionStorage.getItem('pendingLoginUsername');
-  const pendingPassword = sessionStorage.getItem('pendingLoginPassword');
+  // Pending login bilgilerini kontrol et (her render'da) - sadece client-side
+  const pendingUsername = typeof window !== 'undefined' ? sessionStorage.getItem('pendingLoginUsername') : null;
+  const pendingPassword = typeof window !== 'undefined' ? sessionStorage.getItem('pendingLoginPassword') : null;
   
   // Session loading durumunda sayfayı göster
   if (status === 'loading') {

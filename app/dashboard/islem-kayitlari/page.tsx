@@ -41,13 +41,29 @@ export default function IslemKayitlariPage() {
   const [selectedAction, setSelectedAction] = useState('');
   const [users, setUsers] = useState<Array<{ id: string; username: string; isim: string | null; soyisim: string | null }>>([]);
   const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     if (status === 'authenticated' && session?.user) {
       fetchActivityLogs();
       fetchUsers();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, session, page, selectedUserId, selectedAction]);
+
+  // Mobil görünüm kontrolü
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => {
+      window.removeEventListener('resize', checkMobile);
+    };
+  }, []);
 
   const fetchUsers = async () => {
     try {
@@ -305,9 +321,17 @@ export default function IslemKayitlariPage() {
               return (
                 <div
                   key={log.id}
-                  className="p-3 lg:p-4 hover:bg-background-tertiary transition-all"
+                  className={`p-3 lg:p-4 hover:bg-background-tertiary transition-all ${isExpanded ? 'bg-background-tertiary/50' : ''}`}
                 >
-                  <div className="flex justify-between items-start gap-4">
+                  <div 
+                    className={`flex justify-between items-start gap-4 ${isMobile ? 'cursor-pointer' : 'cursor-default'}`}
+                    onClick={() => {
+                      // Mobilde tıklanınca genişlet/daralt
+                      if (isMobile) {
+                        toggleLogExpansion(log.id);
+                      }
+                    }}
+                  >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className={`text-xs lg:text-sm font-medium ${getActionColor(log.action)} whitespace-nowrap`}>
@@ -322,7 +346,10 @@ export default function IslemKayitlariPage() {
                           {formatDateTime(log.createdAt)}
                         </span>
                       </div>
-                      <p className="text-sm text-white line-clamp-1">{log.description}</p>
+                      {/* Mobilde genişletilmişse tam göster, değilse kısalt */}
+                      <p className={`text-sm text-white ${isExpanded || !isMobile ? '' : 'line-clamp-1'}`}>
+                        {log.description}
+                      </p>
                       
                       {/* Genişletilmiş detaylar */}
                       {isExpanded && hasDetails && (
@@ -340,7 +367,28 @@ export default function IslemKayitlariPage() {
                         </div>
                       )}
                     </div>
-                    {hasDetails && (
+                    {/* Mobilde her zaman expand/collapse butonu göster */}
+                    {isMobile && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleLogExpansion(log.id);
+                        }}
+                        className="flex-shrink-0 text-gray-400 hover:text-white transition-all p-1"
+                        title={isExpanded ? 'Detayları gizle' : 'Detayları göster'}
+                      >
+                        <svg
+                          className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                    )}
+                    {/* Desktop'ta sadece detaylar varsa buton göster */}
+                    {!isMobile && hasDetails && (
                       <button
                         onClick={() => toggleLogExpansion(log.id)}
                         className="flex-shrink-0 text-gray-400 hover:text-white transition-all p-1"

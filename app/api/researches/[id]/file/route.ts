@@ -6,7 +6,9 @@ import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 
-// GET: Görevlendirme dosyasını döndür
+export const dynamic = 'force-dynamic';
+
+// GET: Araştırma dosyasını döndür
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -21,32 +23,22 @@ export async function GET(
       );
     }
 
-    const { searchParams } = new URL(request.url);
-    const fileIndex = parseInt(searchParams.get('index') || '0');
-
-    const assignment = await prisma.assignment.findUnique({
+    const research = await prisma.research.findUnique({
       where: { id: params.id },
       select: {
-        files: true,
+        filePath: true,
+        fileName: true,
       },
     });
 
-    if (!assignment) {
-      return NextResponse.json(
-        { error: 'Görevlendirme bulunamadı' },
-        { status: 404 }
-      );
-    }
-
-    if (fileIndex < 0 || fileIndex >= assignment.files.length) {
+    if (!research || !research.filePath) {
       return NextResponse.json(
         { error: 'Dosya bulunamadı' },
         { status: 404 }
       );
     }
 
-    const filePath = assignment.files[fileIndex];
-    const fullPath = join(process.cwd(), filePath);
+    const fullPath = join(process.cwd(), research.filePath);
 
     if (!existsSync(fullPath)) {
       return NextResponse.json(
@@ -56,12 +48,12 @@ export async function GET(
     }
 
     const fileBuffer = await readFile(fullPath);
-    const fileName = filePath.split('/').pop() || 'file';
+    const fileName = research.fileName || research.filePath.split('/').pop() || 'file';
 
     // Dosya tipini belirle
     let contentType = 'application/octet-stream';
     const fileExtension = fileName.toLowerCase().split('.').pop();
-    
+
     if (fileExtension === 'pdf') {
       contentType = 'application/pdf';
     } else if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(fileExtension || '')) {

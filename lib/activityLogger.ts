@@ -46,116 +46,125 @@ export function getActivityDescription(
   
   switch (action) {
     case 'login_success':
-      return `${nameDisplay} kullanıcısı başarılı bir şekilde giriş yaptı.`;
+      return `Başarılı bir şekilde giriş yapıldı.`;
     
     case 'login_failed':
       const reason = metadata?.reason || 'bilinmeyen neden';
-      return `${nameDisplay} kullanıcısı giriş yapamadı. (${reason})`;
+      return `Giriş yapılamadı. (${reason})`;
     
     case 'logout':
-      return `${nameDisplay} kullanıcısı çıkış yaptı.`;
+      return `Çıkış yapıldı.`;
     
     case 'profile_update':
-      return `${nameDisplay} kullanıcısı bilgilerini güncelledi.`;
+      return `Bilgiler güncellendi.`;
     
     case 'password_change':
-      return `${nameDisplay} kullanıcısı şifresini değiştirdi.`;
+      return `Şifre değiştirildi.`;
     
     case '2fa_setup':
-      return `${nameDisplay} kullanıcısı 2FA'yı etkinleştirdi.`;
+      return `2FA etkinleştirildi.`;
     
     case '2fa_disable':
-      return `${nameDisplay} kullanıcısı 2FA'yı devre dışı bıraktı.`;
+      return `2FA devre dışı bırakıldı.`;
     
     case 'meeting_create':
-      return `${nameDisplay} kullanıcısı yeni bir toplantı kaydı ekledi.`;
+      return `Yeni bir toplantı kaydı eklendi.`;
     
     case 'meeting_delete':
-      return `${nameDisplay} kullanıcısı bir toplantı kaydını sildi.`;
+      return `Bir toplantı kaydı silindi.`;
     
     case 'event_create':
-      return `${nameDisplay} kullanıcısı yeni bir etkinlik oluşturdu.`;
+      return `Yeni bir etkinlik oluşturuldu.`;
     
     case 'event_delete':
-      return `${nameDisplay} kullanıcısı bir etkinliği sildi.`;
+      return `Bir etkinlik silindi.`;
     
     case 'event_rsvp':
       const rsvpStatus = metadata?.status === 'attending' ? 'katılıyor' : 'katılmıyor';
-      return `${nameDisplay} kullanıcısı bir etkinliğe ${rsvpStatus} olarak cevap verdi.`;
+      return `Bir etkinliğe ${rsvpStatus} olarak cevap verildi.`;
     
     case 'assignment_create':
-      return `${nameDisplay} kullanıcısı yeni bir görevlendirme oluşturdu.`;
+      return `Yeni bir görevlendirme oluşturuldu.`;
     
     case 'assignment_update':
       const status = metadata?.status;
       if (status === 'completed') {
-        return `${nameDisplay} kullanıcısı bir görevi tamamladı.`;
+        return `Bir görev tamamlandı.`;
       } else if (status === 'cancelled') {
-        return `${nameDisplay} kullanıcısı bir görevi iptal etti.`;
+        return `Bir görev iptal edildi.`;
       }
-      return `${nameDisplay} kullanıcısı bir görevi güncelledi.`;
+      return `Bir görev güncellendi.`;
     
     case 'assignment_delete':
-      return `${nameDisplay} kullanıcısı bir görevlendirmeyi sildi.`;
+      return `Bir görevlendirme silindi.`;
     
     case 'route_create':
-      return `${nameDisplay} kullanıcısı yeni bir rota ekledi.`;
+      return `Yeni bir rota eklendi.`;
     
     case 'route_delete':
-      return `${nameDisplay} kullanıcısı bir rotayı sildi.`;
+      return `Bir rota silindi.`;
     
     case 'announcement_create':
-      return `${nameDisplay} kullanıcısı yeni bir duyuru oluşturdu.`;
+      return `Yeni bir duyuru oluşturuldu.`;
     
     case 'announcement_update':
-      return `${nameDisplay} kullanıcısı bir duyuruyu güncelledi.`;
+      return `Bir duyuru güncellendi.`;
     
     case 'announcement_delete':
-      return `${nameDisplay} kullanıcısı bir duyuruyu sildi.`;
+      return `Bir duyuru silindi.`;
     
     case 'user_create':
-      return `${nameDisplay} kullanıcısı yeni bir üye ekledi.`;
+      return `Yeni bir üye eklendi.`;
     
     case 'user_update':
-      return `${nameDisplay} kullanıcısı bir üye bilgisini güncelledi.`;
+      return `Bir üye bilgisi güncellendi.`;
     
     case 'user_delete':
-      return `${nameDisplay} kullanıcısı bir üyeyi sildi.`;
+      return `Bir üye silindi.`;
     
     case 'role_create':
-      return `${nameDisplay} kullanıcısı yeni bir rütbe oluşturdu.`;
+      return `Yeni bir rütbe oluşturuldu.`;
     
     case 'role_update':
-      return `${nameDisplay} kullanıcısı bir rütbe bilgisini güncelledi.`;
+      return `Bir rütbe bilgisi güncellendi.`;
     
     case 'role_delete':
-      return `${nameDisplay} kullanıcısı bir rütbeyi sildi.`;
+      return `Bir rütbe silindi.`;
     
     case 'meeting_update':
-      return `${nameDisplay} kullanıcısı bir toplantı kaydını güncelledi.`;
+      return `Bir toplantı kaydı güncellendi.`;
     
     case 'event_update':
-      return `${nameDisplay} kullanıcısı bir etkinliği güncelledi.`;
+      return `Bir etkinlik güncellendi.`;
     
     case 'route_update':
-      return `${nameDisplay} kullanıcısı bir rotayı güncelledi.`;
+      return `Bir rota güncellendi.`;
     
     case 'user_approval_approve':
       const approvedUserInfo = metadata?.userInfo || 'bir üye';
-      return `${nameDisplay} kullanıcısı ${approvedUserInfo} adlı üyeyi onayladı.`;
+      return `${approvedUserInfo} adlı üye onaylandı.`;
     
     case 'user_approval_reject':
       const rejectedUserInfo = metadata?.userInfo || 'bir üye';
-      return `${nameDisplay} kullanıcısı ${rejectedUserInfo} adlı üyenin kaydını reddetti.`;
+      return `${rejectedUserInfo} adlı üyenin kaydı reddedildi.`;
     
     case 'user_info_submitted':
-      return `${nameDisplay} kullanıcısı üyelik bilgilerini gönderdi ve onay bekliyor.`;
+      return `Üyelik bilgileri gönderildi ve onay bekleniyor.`;
     
     case 'user_registration_start':
-      return `${nameDisplay} kullanıcısı üyelik kaydı oluşturuldu.`;
+      return `Üyelik kaydı oluşturuldu.`;
+    
+    case 'research_create':
+      return `Yeni bir araştırma eklendi.`;
+    
+    case 'research_update':
+      return `Bir araştırma güncellendi.`;
+    
+    case 'research_delete':
+      return `Bir araştırma silindi.`;
     
     default:
-      return `${nameDisplay} kullanıcısı bir işlem gerçekleştirdi. (${action})`;
+      return `Bir işlem gerçekleştirildi. (${action})`;
   }
 }
 

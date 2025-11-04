@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { redirect } from 'next/navigation';
 import { hasPermission } from '@/lib/auth';
+import PDFViewer from '@/components/PDFViewer';
 
 interface Meeting {
   id: string;
@@ -701,43 +702,15 @@ export default function ToplantiKayitlariPage() {
 
       {/* PDF Viewer Modal */}
       {pdfViewerOpen && viewingPdfUrl && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
-          onClick={() => {
+        <PDFViewer
+          url={viewingPdfUrl}
+          title={viewingPdfTitle}
+          onClose={() => {
             setPdfViewerOpen(false);
             setViewingPdfUrl(null);
             setViewingPdfTitle('');
           }}
-        >
-          <div
-            className="bg-background-secondary rounded-md shadow-2xl w-full h-full max-w-7xl max-h-[90vh] m-4 flex flex-col border border-gray-700 backdrop-blur-sm"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="flex justify-between items-center p-4 border-b border-gray-700">
-              <h2 className="text-xl font-semibold text-white">{viewingPdfTitle}</h2>
-              <button
-                onClick={() => {
-                  setPdfViewerOpen(false);
-                  setViewingPdfUrl(null);
-                  setViewingPdfTitle('');
-                }}
-                className="text-gray-400 hover:text-white transition-all text-2xl font-bold"
-              >
-                ×
-              </button>
-            </div>
-            
-            {/* PDF Viewer */}
-            <div className="flex-1 overflow-hidden">
-              <iframe
-                src={viewingPdfUrl}
-                className="w-full h-full border-0"
-                title={viewingPdfTitle}
-              />
-            </div>
-          </div>
-        </div>
+        />
       )}
     </div>
   );
