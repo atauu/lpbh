@@ -11,6 +11,7 @@ declare module 'next-auth' {
       soyisim?: string | null;
       twoFactorEnabled?: boolean;
       membershipStatus?: string;
+      isSystemAdmin?: boolean;
       permissions?: any;
     };
   }
@@ -34,7 +35,10 @@ declare module 'next-auth/jwt' {
     soyisim?: string | null;
     twoFactorEnabled?: boolean;
     membershipStatus?: string;
+    isSystemAdmin?: boolean;
     permissions?: any;
   }
 }
+
+
 

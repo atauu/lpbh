@@ -171,9 +171,33 @@ export const authOptions: NextAuthOptions = {
         token.soyisim = (user as any).soyisim;
         token.membershipStatus = (user as any).membershipStatus;
         token.twoFactorEnabled = (user as any).twoFactorEnabled || false;
+        token.isSystemAdmin = (user as any).isSystemAdmin || false;
         
-        // Rütbe yetkilerini ekle
-        if (user.rutbe) {
+        // Sistem görevlisi kontrolü - tüm izinleri ver
+        if ((user as any).isSystemAdmin) {
+          token.permissions = {
+            users: {
+              create: true,
+              read: {
+                enabled: true,
+                readableFields: ['id', 'username', 'rutbe', 'membershipStatus', 'isim', 'soyisim', 'tckn', 'telefon', 'evAdresi', 'yakiniIsmi', 'yakiniTelefon', 'ruhsatSeriNo', 'kanGrubu', 'createdAt', 'updatedAt'],
+              },
+              update: true,
+              delete: true,
+            },
+            userApproval: { approve: true, reject: true },
+            meetings: { create: true, read: true, update: true, delete: true },
+            events: { create: true, read: true, update: true, delete: true },
+            assignments: { create: true, read: true, update: true, delete: true },
+            routes: { create: true, read: true, update: true, delete: true },
+            roles: { create: true, read: true, update: true, delete: true },
+            announcements: { create: true, read: true, update: true, delete: true },
+            activityLogs: { read: true },
+            researches: { create: true, read: true, update: true, delete: true },
+            messages: { create: true, read: true, update: true, delete: true },
+          };
+        } else if (user.rutbe) {
+          // Rütbe yetkilerini ekle
           try {
             const role = await prisma.role.findUnique({
               where: { name: user.rutbe },
@@ -199,6 +223,7 @@ export const authOptions: NextAuthOptions = {
               isim: true,
               soyisim: true,
               rutbe: true,
+              isSystemAdmin: true,
             },
           });
           if (dbUser) {
@@ -207,9 +232,33 @@ export const authOptions: NextAuthOptions = {
             token.isim = dbUser.isim;
             token.soyisim = dbUser.soyisim;
             token.rutbe = dbUser.rutbe;
+            token.isSystemAdmin = dbUser.isSystemAdmin || false;
             
-            // Yetkileri yeniden çek
-            if (dbUser.rutbe) {
+            // Sistem görevlisi kontrolü - tüm izinleri ver
+            if (dbUser.isSystemAdmin) {
+              token.permissions = {
+                users: {
+                  create: true,
+                  read: {
+                    enabled: true,
+                    readableFields: ['id', 'username', 'rutbe', 'membershipStatus', 'isim', 'soyisim', 'tckn', 'telefon', 'evAdresi', 'yakiniIsmi', 'yakiniTelefon', 'ruhsatSeriNo', 'kanGrubu', 'createdAt', 'updatedAt'],
+                  },
+                  update: true,
+                  delete: true,
+                },
+                userApproval: { approve: true, reject: true },
+                meetings: { create: true, read: true, update: true, delete: true },
+                events: { create: true, read: true, update: true, delete: true },
+                assignments: { create: true, read: true, update: true, delete: true },
+                routes: { create: true, read: true, update: true, delete: true },
+                roles: { create: true, read: true, update: true, delete: true },
+                announcements: { create: true, read: true, update: true, delete: true },
+                activityLogs: { read: true },
+                researches: { create: true, read: true, update: true, delete: true },
+                messages: { create: true, read: true, update: true, delete: true },
+              };
+            } else if (dbUser.rutbe) {
+              // Yetkileri yeniden çek
               const role = await prisma.role.findUnique({
                 where: { name: dbUser.rutbe },
                 select: { permissions: true },
@@ -236,6 +285,7 @@ export const authOptions: NextAuthOptions = {
         session.user.soyisim = token.soyisim as string | null;
         session.user.membershipStatus = token.membershipStatus as string;
         session.user.twoFactorEnabled = token.twoFactorEnabled as boolean;
+        session.user.isSystemAdmin = token.isSystemAdmin as boolean;
         session.user.permissions = token.permissions as any;
       }
       return session;

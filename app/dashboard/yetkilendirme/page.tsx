@@ -50,6 +50,16 @@ interface FormPermissions {
   messages: { create: boolean; read: boolean; update: boolean; delete: boolean };
 }
 
+interface User {
+  id: string;
+  username: string;
+  isSystemAdmin: boolean;
+  role?: {
+    id: string;
+    name: string;
+  } | null;
+}
+
 export default function YetkilendirmePage() {
   const { data: session, status } = useSession();
   const [roles, setRoles] = useState<Role[]>([]);
@@ -61,6 +71,13 @@ export default function YetkilendirmePage() {
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingRoleId, setDeletingRoleId] = useState<string | null>(null);
+  
+  // Sistem görevlisi için state
+  const [users, setUsers] = useState<User[]>([]);
+  const [selectedSystemAdminId, setSelectedSystemAdminId] = useState<string>('');
+  const [isSystemAdminActive, setIsSystemAdminActive] = useState<boolean>(false);
+  const [isAssigningSystemAdmin, setIsAssigningSystemAdmin] = useState(false);
+  const [showSystemAdminDropdown, setShowSystemAdminDropdown] = useState(false);
 
   // Üye alanları
   const userFields = [
@@ -107,6 +124,7 @@ export default function YetkilendirmePage() {
     }
     if (session) {
       fetchRoles();
+      fetchUsers();
     }
   }, [session, status]);
 
@@ -169,6 +187,70 @@ export default function YetkilendirmePage() {
       setError(error.message || 'Bir hata oluştu');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch('/api/users/system-admin', { credentials: 'include' });
+      if (res.ok) {
+        const data = await res.json();
+        setUsers(data);
+        
+        // Aktif sistem görevlisi varsa seçili yap
+        const activeSystemAdmin = data.find((u: User) => u.isSystemAdmin);
+        if (activeSystemAdmin) {
+          setSelectedSystemAdminId(activeSystemAdmin.id);
+          setIsSystemAdminActive(true);
+        }
+      }
+    } catch (error: any) {
+      console.error('Users fetch error:', error);
+    }
+  };
+
+  const handleAssignSystemAdmin = async () => {
+    if (!selectedSystemAdminId) {
+      setError('Lütfen bir kullanıcı seçin');
+      return;
+    }
+
+    setIsAssigningSystemAdmin(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/users/system-admin', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          userId: selectedSystemAdminId,
+          isSystemAdmin: isSystemAdminActive,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Sistem görevlisi atanamadı');
+      }
+
+      const result = await res.json();
+      
+      // Kullanıcıları yeniden yükle
+      await fetchUsers();
+      
+      // Başarı mesajı göster
+      setError('');
+      alert(result.message || 'İşlem başarılı');
+      
+      // Dropdown'u kapat
+      setShowSystemAdminDropdown(false);
+    } catch (error: any) {
+      setError(error.message || 'Sistem görevlisi atanamadı');
+    } finally {
+      setIsAssigningSystemAdmin(false);
     }
   };
 
@@ -653,6 +735,129 @@ export default function YetkilendirmePage() {
           <p className="text-red-400 text-sm">{error}</p>
         </div>
       )}
+
+      {/* Sistem Görevlisi Seçimi */}
+      <div className="bg-background-secondary rounded-md border border-gray-700 p-6 backdrop-blur-sm">
+        <h2 className="text-xl font-semibold text-white mb-4">Sistem Görevlisi Seç</h2>
+        
+        <div className="space-y-4">
+          <div className="flex items-center gap-4">
+            <label className="text-sm font-medium text-gray-300 min-w-[200px]">
+              Üye Seç:
+            </label>
+            <div className="flex-1 relative system-admin-dropdown-container">
+              <button
+                type="button"
+                onClick={() => setShowSystemAdminDropdown(!showSystemAdminDropdown)}
+                disabled={users.length === 0}
+                className="w-full text-left px-3 py-2 text-sm bg-background-tertiary border border-gray-600 rounded-md text-gray-300 hover:bg-gray-700 transition-all flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span>
+                  {selectedSystemAdminId
+                    ? users.find(u => u.id === selectedSystemAdminId)?.username || 'Üye seçin...'
+                    : 'Üye seçin...'}
+                </span>
+                <svg
+                  className={`w-4 h-4 transition-transform ${showSystemAdminDropdown ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              
+              {showSystemAdminDropdown && users.length > 0 && (
+                <div className="absolute z-50 mt-1 w-full bg-background border border-gray-700 rounded-md shadow-lg max-h-64 overflow-y-auto backdrop-blur-sm">
+                  <div className="p-2 space-y-1">
+                    {users.map((user) => (
+                      <button
+                        key={user.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedSystemAdminId(user.id);
+                          setIsSystemAdminActive(user.isSystemAdmin);
+                          setShowSystemAdminDropdown(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-sm rounded hover:bg-background-tertiary transition-all ${
+                          selectedSystemAdminId === user.id
+                            ? 'bg-primary/20 text-primary border border-primary/30'
+                            : 'text-gray-300'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium">{user.username}</span>
+                          {user.isSystemAdmin && (
+                            <span className="text-xs bg-primary/20 text-primary px-2 py-1 rounded font-medium">
+                              ✓ Aktif
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {selectedSystemAdminId && (
+            <div className="flex items-center gap-4 p-4 bg-background-tertiary rounded-md border border-gray-700">
+              <label className="text-sm font-medium text-gray-300 min-w-[200px]">
+                Sistem Görevlisi:
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer group">
+                <div className="relative">
+                  <input
+                    type="checkbox"
+                    checked={isSystemAdminActive}
+                    onChange={(e) => setIsSystemAdminActive(e.target.checked)}
+                    className="w-6 h-6 text-primary bg-background border-gray-600 rounded focus:ring-primary focus:ring-2 cursor-pointer transition-all"
+                  />
+                  {isSystemAdminActive && (
+                    <svg
+                      className="absolute top-1 left-1 w-4 h-4 text-primary pointer-events-none"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  )}
+                </div>
+                <span className={`text-sm font-medium transition-all ${
+                  isSystemAdminActive ? 'text-primary' : 'text-gray-400'
+                }`}>
+                  {isSystemAdminActive ? '✓ Aktif (Sistem Görevlisi)' : 'Pasif'}
+                </span>
+              </label>
+            </div>
+          )}
+
+          <div className="flex justify-end pt-2">
+            <button
+              onClick={handleAssignSystemAdmin}
+              disabled={isAssigningSystemAdmin || !selectedSystemAdminId}
+              className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 font-medium"
+            >
+              {isAssigningSystemAdmin ? (
+                <span className="flex items-center gap-2">
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Atanıyor...
+                </span>
+              ) : (
+                'Sistem Yetkilisini Ata'
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
 
       {/* Rütbeler Listesi - Gruplara göre */}
       {roleGroups.length === 0 && roles.length === 0 ? (
