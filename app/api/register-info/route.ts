@@ -17,6 +17,8 @@ export async function POST(request: NextRequest) {
       yakiniTelefon,
       ruhsatSeriNo,
       kanGrubu,
+      plaka,
+      ehliyetTuru,
     } = body;
 
     if (!token) {
@@ -58,6 +60,8 @@ export async function POST(request: NextRequest) {
         yakiniTelefon: yakiniTelefon || null,
         ruhsatSeriNo: ruhsatSeriNo || null,
         kanGrubu: kanGrubu || null,
+        plaka: plaka ? plaka.toUpperCase() : null,
+        ehliyetTuru: Array.isArray(ehliyetTuru) ? ehliyetTuru : [],
         membershipStatus: 'pending_approval', // Onay bekliyor durumuna geç
         registrationToken: null, // Token'ı temizle (güvenlik için)
       },

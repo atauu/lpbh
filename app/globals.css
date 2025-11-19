@@ -2,16 +2,104 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+/* Dark Theme (Default) */
+:root,
+.dark {
   --primary: #31ab43;
-  --background: #0a0a0a;
-  --background-secondary: #1a1a1a;
-  --background-tertiary: #2a2a2a;
+  --primary-hover: #2a9540;
+  --primary-light: rgba(49, 171, 67, 0.1);
+  --primary-dark: #1f7a2e;
+  
+  --background: rgba(10, 10, 10, 0.7);
+  --background-secondary: rgba(26, 26, 26, 0.75);
+  --background-tertiary: rgba(42, 42, 42, 0.8);
+  --background-hover: rgba(37, 37, 37, 0.85);
+  
+  --text-primary: #ffffff;
+  --text-secondary: #e5e5e5;
+  --text-tertiary: #a3a3a3;
+  --text-muted: #737373;
+  
+  --border: #404040;
+  --border-light: #2a2a2a;
+  --border-dark: #1a1a1a;
+  
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+  --shadow-primary: 0 0 20px rgba(49, 171, 67, 0.3);
+  
+  --scrollbar-track: rgba(26, 26, 26, 0.5);
+  --scrollbar-thumb: rgba(49, 171, 67, 0.3);
+  --scrollbar-thumb-hover: rgba(49, 171, 67, 0.5);
+}
+
+/* Light Theme */
+.light {
+  --primary: #1f7a2e;
+  --primary-hover: #2a9540;
+  --primary-light: rgba(31, 122, 46, 0.12);
+  --primary-dark: #155a20;
+  
+  /* Metallic light gray surfaces */
+  --background: rgba(246, 247, 249, 0.85);           /* #f6f7f9 */
+  --background-secondary: rgba(236, 239, 242, 0.85);  /* #eceff2 */
+  --background-tertiary: rgba(224, 228, 233, 0.9);    /* #e0e4e9 */
+  --background-hover: rgba(232, 236, 241, 0.95);      /* #e8ecf1 */
+  
+  /* Text tuned for light metallic contrast */
+  --text-primary: #0a0a0a;
+  --text-secondary: #1a1a1a;
+  --text-tertiary: #3b3f44;      /* cool gray */
+  --text-muted: #5a6066;
+  
+  /* Borders in cool metallic gray */
+  --border: #c9ced4;
+  --border-light: #d9dee3;
+  --border-dark: #b5bac0;
+  
+  /* Softer light-mode shadows */
+  --shadow-sm: 0 1px 2px 0 rgba(17, 24, 39, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(17, 24, 39, 0.06), 0 2px 4px -1px rgba(17, 24, 39, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(17, 24, 39, 0.08), 0 4px 6px -2px rgba(17, 24, 39, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(17, 24, 39, 0.09), 0 10px 10px -5px rgba(17, 24, 39, 0.04);
+  --shadow-primary: 0 0 20px rgba(31, 122, 46, 0.22);
+  
+  /* Scrollbars */
+  --scrollbar-track: rgba(236, 239, 242, 0.9);
+  --scrollbar-thumb: rgba(143, 149, 156, 0.6);
+  --scrollbar-thumb-hover: rgba(143, 149, 156, 0.8);
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: var(--background);
+  color: var(--text-primary);
+  background: linear-gradient(-45deg, #000000, #0f0f0f, #1b1b1b, #0f0f0f, #1f7a2e);
+  background-size: 400% 400%;
+  animation: gradient 15s ease infinite;
+  min-height: 100vh;
+  transition: color 0.3s ease;
+  position: relative;
+  overflow-x: hidden;
+}
+
+/* Light theme gradient override */
+.light body {
+  background: linear-gradient(-45deg, #f5f7fa, #e6e9ee, #d8dde3, #c9cfd6, #bcc3cc);
+  background-size: 400% 400%;
+  animation: gradient 15s ease infinite;
+}
+
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 @layer utilities {
@@ -42,6 +130,32 @@ body {
     touch-action: manipulation;
     -webkit-touch-callout: none;
   }
+}
+
+/* Custom scrollbar - Theme aware */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
 }
 
 /* React-PDF Styles */
@@ -91,6 +205,57 @@ body {
   display: none;
 }
 
+/* Custom Sidebar Scrollbar - Theme aware */
+.sidebar-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+.sidebar-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 4px;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.sidebar-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Global scrollbar styling */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 4px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
 /* WhatsApp-style word breaking - kelimeleri bölme */
 .no-word-break {
   word-break: normal;
@@ -103,6 +268,178 @@ body {
 .overflow-x-hidden {
   overflow-x: hidden;
   max-width: 100%;
+}
+
+/* Custom Checkbox Styles - Theme aware */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid var(--border);
+  border-radius: 0.375rem;
+  background-color: var(--background);
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+input[type="checkbox"]:hover {
+  border-color: var(--primary);
+  background-color: var(--background-secondary);
+  transform: scale(1.05);
+}
+
+input[type="checkbox"]:checked {
+  background-color: var(--primary);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) rotate(45deg);
+  width: 5px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+}
+
+input[type="checkbox"]:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+input[type="checkbox"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Modern UI Components - Glassmorphism & Gradients */
+.glass-card {
+  background: var(--background-secondary);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  transition: all 0.3s ease;
+  opacity: 0.85;
+}
+
+.glass-card:hover {
+  opacity: 1;
+  box-shadow: var(--shadow-xl);
+  transform: translateY(-2px);
+}
+
+.modern-button {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+  border: none;
+  box-shadow: var(--shadow-primary);
+  transition: all 0.3s ease;
+}
+
+.modern-button:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-primary), var(--shadow-lg);
+}
+
+.modern-button:active {
+  transform: translateY(0);
+}
+
+/* Modern Input Styles */
+.modern-input {
+  background: var(--background-secondary);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+}
+
+.modern-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+  outline: none;
+}
+
+/* Gradient Backgrounds */
+.gradient-primary {
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+}
+
+.gradient-background {
+  background: linear-gradient(135deg, var(--background) 0%, var(--background-secondary) 50%, var(--background-tertiary) 100%);
+}
+
+/* Smooth Transitions */
+* {
+  transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow, transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Modern Card Styles */
+.modern-card {
+  background: var(--background-secondary);
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(12px);
+  transition: all 0.3s ease;
+}
+
+.modern-card:hover {
+  box-shadow: var(--shadow-lg);
+  border-color: var(--primary);
+  transform: translateY(-2px);
+}
+
+/* Animated Background Pattern */
+@keyframes gradient-shift {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.animated-gradient {
+  background: linear-gradient(-45deg, var(--background), var(--background-secondary), var(--background-tertiary), var(--background));
+  background-size: 400% 400%;
+  animation: gradient-shift 15s ease infinite;
+}
+
+/* Radix UI Accordion Animations */
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+.animate-accordion-down {
+  animation: accordion-down 0.2s ease-out;
+}
+
+.animate-accordion-up {
+  animation: accordion-up 0.2s ease-out;
 }
 
 /* Force CSS refresh */

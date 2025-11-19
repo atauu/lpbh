@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
+import { Button } from '@/components/ui';
 import { redirect } from 'next/navigation';
 
 interface UserInfo {
@@ -17,6 +18,8 @@ interface UserInfo {
   yakiniTelefon: string | null;
   ruhsatSeriNo: string | null;
   kanGrubu: string | null;
+  plaka: string | null;
+  ehliyetTuru: string[];
   createdAt: string;
 }
 
@@ -318,10 +321,24 @@ export default function BilgilerimPage() {
                   <p className="text-white">{userInfo.kanGrubu}</p>
                 </div>
               )}
+
+              {userInfo.plaka && (
+                <div>
+                  <p className="text-sm font-medium text-gray-300 mb-1">Plaka</p>
+                  <p className="text-white font-mono">{userInfo.plaka}</p>
+                </div>
+              )}
+
+              {userInfo.ehliyetTuru && userInfo.ehliyetTuru.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-gray-300 mb-1">Ehliyet Türü</p>
+                  <p className="text-white">{userInfo.ehliyetTuru.join(', ')}</p>
+                </div>
+              )}
             </div>
 
             <div className="pt-6 border-t border-gray-700 flex flex-wrap gap-4">
-              <button
+              <Button
                 onClick={() => {
                   setShowPasswordModal(true);
                   setPasswordError('');
@@ -331,12 +348,13 @@ export default function BilgilerimPage() {
                     confirmPassword: '',
                   });
                 }}
-                className="px-6 py-3 bg-primary text-white rounded-md hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30"
+                variant="primary"
+                className="px-6 py-3"
               >
                 Şifre Değiştir
-              </button>
+              </Button>
 
-              <button
+              <Button
                 onClick={() => {
                   setShow2FAModal(true);
                   setSetupError('');
@@ -346,10 +364,11 @@ export default function BilgilerimPage() {
                   setQrCodeDataUrl(null);
                   fetch2FAStatus();
                 }}
-                className="px-6 py-3 bg-background-tertiary text-white rounded-md hover:bg-gray-700 transition-all border border-gray-700"
+                variant="secondary"
+                className="px-6 py-3"
               >
                 2FA Ayarları
-              </button>
+              </Button>
             </div>
           </div>
         ) : (

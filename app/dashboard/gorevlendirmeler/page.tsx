@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
+import { Button } from '@/components/ui';
 import { redirect } from 'next/navigation';
 import { hasPermission } from '@/lib/auth';
 import PDFViewer from '@/components/PDFViewer';
+import ReadStatusIndicator from '@/components/ReadStatusIndicator';
 
 interface Assignment {
   id: string;
@@ -59,6 +61,7 @@ export default function GorevlendirmelerPage() {
   const [viewingPdfUrl, setViewingPdfUrl] = useState<string | null>(null);
   const [viewingPdfTitle, setViewingPdfTitle] = useState<string>('');
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
+  const [readStatuses, setReadStatuses] = useState<Record<string, boolean>>({}); // assignmentId -> isRead
 
   // Form state
   const [formData, setFormData] = useState({
@@ -78,14 +81,39 @@ export default function GorevlendirmelerPage() {
     filesToDelete: [] as string[],
   });
 
+  // Tüm görevlendirmeleri okundu işaretle
+  const markAllAsRead = async () => {
+    if (!session?.user?.id) return;
+
+    try {
+      const res = await fetch('/api/read-status', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ eventType: 'assignment' }),
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('Mark all assignments as read failed:', errorData);
+      }
+    } catch (error) {
+      console.error('Mark all assignments as read error:', error);
+    }
+  };
+
   useEffect(() => {
     if (status === 'unauthenticated') {
       redirect('/login');
     }
     if (session) {
+      // Sayfa yüklendiğinde tüm görevlendirmeleri okundu işaretle
+      markAllAsRead();
       fetchAssignments();
       fetchUsers();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, status]);
 
   const fetchAssignments = async () => {
@@ -101,10 +129,68 @@ export default function GorevlendirmelerPage() {
       }
       const data = await res.json();
       setAssignments(data);
+      // Okuma durumlarını getir
+      if (session?.user?.id) {
+        await fetchReadStatuses(data);
+      }
     } catch (error: any) {
       setError(error.message || 'Bir hata oluştu');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Okuma durumlarını getir
+  const fetchReadStatuses = async (assignmentsList: Assignment[]) => {
+    if (!session?.user?.id) return;
+
+    try {
+      const statusPromises = assignmentsList.map(async (assignment) => {
+        const res = await fetch(`/api/read-status?eventType=assignment&eventId=${assignment.id}`, {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const isRead = data.readBy.some((user: any) => user.id === session.user.id);
+          return { assignmentId: assignment.id, isRead };
+        }
+        return { assignmentId: assignment.id, isRead: false };
+      });
+
+      const statuses = await Promise.all(statusPromises);
+      const statusMap: Record<string, boolean> = {};
+      statuses.forEach(({ assignmentId, isRead }) => {
+        statusMap[assignmentId] = isRead;
+      });
+      setReadStatuses(statusMap);
+    } catch (error) {
+      console.error('Read statuses fetch error:', error);
+    }
+  };
+
+  // Okundu işaretle
+  const markAsRead = async (assignmentId: string) => {
+    if (!session?.user?.id) return;
+
+    try {
+      await fetch('/api/read-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          eventType: 'assignment',
+          eventId: assignmentId,
+        }),
+        credentials: 'include',
+      });
+
+      setReadStatuses((prev) => ({
+        ...prev,
+        [assignmentId]: true,
+      }));
+    } catch (error) {
+      console.error('Mark as read error:', error);
     }
   };
 
@@ -184,6 +270,8 @@ export default function GorevlendirmelerPage() {
   };
 
   const handleViewAssignment = async (assignment: Assignment) => {
+    // Assignment açıldığında otomatik okundu işaretle
+    markAsRead(assignment.id);
     setViewingAssignment(assignment);
     setViewFormData({
       details: assignment.details || '',
@@ -425,12 +513,13 @@ export default function GorevlendirmelerPage() {
             </select>
           </div>
           {canCreate && (
-            <button
+            <Button
               onClick={() => setShowAddModal(true)}
-              className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 whitespace-nowrap"
+              variant="primary"
+              className="px-4 py-2 whitespace-nowrap"
             >
               Görev Ata
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -449,12 +538,13 @@ export default function GorevlendirmelerPage() {
               : getUserName(users.find(u => u.id === selectedAssigneeFilter) || { id: '', username: '', isim: null, soyisim: null })
             }
           </p>
-          <button
+          <Button
             onClick={() => setSelectedAssigneeFilter('')}
-            className="px-3 py-1 text-primary hover:text-white bg-background rounded-md transition-all text-sm"
+            variant="primary"
+            className="px-4 py-2"
           >
             Filtreyi Temizle
-          </button>
+          </Button>
         </div>
       )}
 
@@ -477,9 +567,26 @@ export default function GorevlendirmelerPage() {
               >
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-white mb-2">
-                      {assignment.task}
-                    </h3>
+                    <div className="flex items-center gap-2 mb-2">
+                      {/* Yeşil nokta - okunmamışsa göster, başlığın önünde */}
+                      {!(readStatuses[assignment.id] || false) && (
+                        <div className="w-5 h-5 bg-green-500 rounded-full flex-shrink-0" />
+                      )}
+                      <h3 className="text-lg font-semibold text-white">
+                        {assignment.task}
+                      </h3>
+                      <ReadStatusIndicator
+                        eventType="assignment"
+                        eventId={assignment.id}
+                        isRead={readStatuses[assignment.id] || false}
+                        onMarkAsRead={() => {
+                          setReadStatuses((prev) => ({
+                            ...prev,
+                            [assignment.id]: true,
+                          }));
+                        }}
+                      />
+                    </div>
                     <div className="text-sm text-gray-400 space-y-1">
                       <p>
                         Görevlendirilen: {getUserName(assignment.assignee)}
@@ -548,9 +655,26 @@ export default function GorevlendirmelerPage() {
               >
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-white mb-2">
-                      {assignment.task}
-                    </h3>
+                    <div className="flex items-center gap-2 mb-2">
+                      {/* Yeşil nokta - okunmamışsa göster, başlığın önünde */}
+                      {!(readStatuses[assignment.id] || false) && (
+                        <div className="w-5 h-5 bg-green-500 rounded-full flex-shrink-0" />
+                      )}
+                      <h3 className="text-lg font-semibold text-white">
+                        {assignment.task}
+                      </h3>
+                      <ReadStatusIndicator
+                        eventType="assignment"
+                        eventId={assignment.id}
+                        isRead={readStatuses[assignment.id] || false}
+                        onMarkAsRead={() => {
+                          setReadStatuses((prev) => ({
+                            ...prev,
+                            [assignment.id]: true,
+                          }));
+                        }}
+                      />
+                    </div>
                     <div className="text-sm text-gray-400 space-y-1">
                       <p>
                         Görevlendirilen: {getUserName(assignment.assignee)}

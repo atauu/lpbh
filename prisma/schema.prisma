@@ -11,19 +11,21 @@ datasource db {
 }
 
 model User {
-  id            String  @id @default(cuid())
-  username      String  @unique
+  id            String   @id @default(cuid())
+  username      String   @unique
   password      String
   rutbe         String? // Rütbe
   isim          String? // İsim
   soyisim       String? // Soyisim
   tckn          String? // TC Kimlik No
   telefon       String? // Telefon numarası
-  evAdresi      String? @map("ev_adresi") // Ev adresi
-  yakiniIsmi    String? @map("yakini_ismi") // Yakını ismi
-  yakiniTelefon String? @map("yakini_telefon") // Yakını telefon numarası
-  ruhsatSeriNo  String? @map("ruhsat_seri_no") // Ruhsat seri no
-  kanGrubu      String? @map("kan_grubu") // Kan grubu
+  evAdresi      String?  @map("ev_adresi") // Ev adresi
+  yakiniIsmi    String?  @map("yakini_ismi") // Yakını ismi
+  yakiniTelefon String?  @map("yakini_telefon") // Yakını telefon numarası
+  ruhsatSeriNo  String?  @map("ruhsat_seri_no") // Ruhsat seri no
+  kanGrubu      String?  @map("kan_grubu") // Kan grubu
+  plaka         String? // Plaka numarası
+  ehliyetTuru   String[] @default([]) @map("ehliyet_turu") // Ehliyet türleri array
 
   // Üyelik durumu
   membershipStatus  String  @default("pending_info") @map("membership_status") // "pending_info" | "pending_approval" | "approved" | "rejected"
@@ -35,6 +37,9 @@ model User {
 
   // Sistem görevlisi
   isSystemAdmin Boolean @default(false) @map("is_system_admin") // Sistem görevlisi mi?
+
+  // Online durumu
+  lastActiveAt DateTime? @map("last_active_at") // Son aktif zaman
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -62,6 +67,28 @@ model User {
   researches         Research[]
   // Mesajlar ilişkisi
   messages           Message[]
+  // Okundu bilgileri ilişkisi
+  readStatuses       ReadStatus[]
+  // Mesaj reaksiyonları
+  messageReactions   MessageReaction[]
+  // Okundu bilgileri (mesajlar için)
+  readReceipts       ReadReceipt[]
+  // Yıldızlı mesajlar
+  starredMessages    StarredMessage[]
+  // Sabitlediği mesajlar
+  pinnedMessages     Message[]           @relation("PinnedMessages")
+  // Özel mesajlar (gönderilen)
+  privateMessages    Message[]           @relation("PrivateMessages")
+  // Çağrılar (başlatan)
+  callerCalls        Call[]              @relation("CallerCalls")
+  // Çağrılar (alan)
+  receiverCalls      Call[]              @relation("ReceiverCalls")
+
+  // Oylamalar & Belgeler
+  pollsCreated       Poll[]        @relation("PollCreator")
+  pollOptionsCreated PollOption[]  @relation("PollOptionCreator")
+  pollVotes          PollVote[]
+  documentsUploaded  Document[]    @relation("DocumentUploader")
 
   @@map("users")
 }
@@ -210,6 +237,75 @@ model Route {
   @@map("routes")
 }
 
+// Oylamalar
+model Poll {
+  id                String       @id @default(cuid())
+  title             String
+  description       String?      @db.Text
+  type              String                      // 'yes_no' | 'multiple'
+  allowCustomOption Boolean     @default(false) @map("allow_custom_option")
+  visibility        String      @default("herkes") // "yönetim" | "member" | "herkes"
+  createdBy         String      @map("created_by")
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  creator           User        @relation("PollCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  options           PollOption[]
+  votes             PollVote[]
+
+  @@map("polls")
+}
+
+model PollOption {
+  id        String   @id @default(cuid())
+  pollId    String   @map("poll_id")
+  text      String   @db.Text
+  createdBy String?  @map("created_by") // null: sistem tarafından eklenen (ör: evet/hayır)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  poll      Poll     @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  creator   User?    @relation("PollOptionCreator", fields: [createdBy], references: [id], onDelete: Cascade)
+  votes     PollVote[]
+
+  @@unique([pollId, text])
+  @@unique([pollId, createdBy])
+  @@map("poll_options")
+}
+
+model PollVote {
+  id        String   @id @default(cuid())
+  pollId    String   @map("poll_id")
+  optionId  String   @map("option_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  poll      Poll      @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  option    PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([pollId, userId])
+  @@map("poll_votes")
+}
+
+// Belgeler (toplantı kayıtlarına benzer, katılımcı ve tarih planlaması yok)
+model Document {
+  id         String   @id @default(cuid())
+  title      String
+  description String? @db.Text
+  filePath   String   @map("file_path")
+  fileName   String   @map("file_name")
+  fileSize   Int      @map("file_size")
+  content    String?  @db.Text          // PDF içerik metni (arama için)
+  visibility String   @default("herkes") // \"yönetim\" | \"member\" | \"herkes\"
+  uploadedBy String   @map("uploaded_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  uploader   User     @relation("DocumentUploader", fields: [uploadedBy], references: [id], onDelete: Cascade)
+
+  @@map("documents")
+}
+
 // Rütbe Grupları
 model RoleGroup {
   id          String    @id @default(cuid())
@@ -218,6 +314,7 @@ model RoleGroup {
   order       Int       @default(0) // Sıralama (0: Aday, 1: Member, 2: Yönetim)
   roles       Role[] // Bu gruba ait rütbeler
   messages    Message[] // Bu gruba ait mesajlar
+  calls       Call[] // Bu gruba ait çağrılar
   createdAt   DateTime  @default(now()) @map("created_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
@@ -241,14 +338,17 @@ model Role {
 
 // Duyurular
 model Announcement {
-  id         String   @id @default(cuid())
-  title      String // Duyuru başlığı
-  content    String   @db.Text // Duyuru içeriği
-  visibility String // "yönetim" | "member" | "herkes"
-  importance String   @default("normal") // "düşük" | "normal" | "yüksek"
-  createdBy  String   @map("created_by") // Oluşturan kullanıcı ID
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id           String    @id @default(cuid())
+  title        String // Duyuru başlığı
+  content      String    @db.Text // Duyuru içeriği
+  visibility   String // "yönetim" | "member" | "herkes"
+  importance   String    @default("normal") // "düşük" | "normal" | "yüksek"
+  createdBy    String    @map("created_by") // Oluşturan kullanıcı ID
+  scheduledAt  DateTime? @map("scheduled_at") // Planlı yayın tarihi ve saati
+  notifyBefore Boolean   @default(false) @map("notify_before") // Haber ver seçeneği
+  status       String    @default("published") // "published" | "scheduled"
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
 
   creator User @relation("AnnouncementCreator", fields: [createdBy], references: [id], onDelete: Cascade)
 
@@ -297,29 +397,157 @@ model Research {
 // Mesajlar (Sohbet)
 model Message {
   id                    String    @id @default(cuid())
-  type                  String    @default("text") // "text" | "image" | "video" | "audio" | "location" | "live_location"
+  type                  String    @default("text") // "text" | "image" | "video" | "audio" | "location" | "live_location" | "document" | "file"
   content               String?   @db.Text // Mesaj içeriği (metin mesajlar için)
-  mediaPath             String?   @map("media_path") // Medya dosya yolu (fotoğraf, video, ses)
+  mediaPath             String?   @map("media_path") // Medya dosya yolu (fotoğraf, video, ses, dosya)
   mediaUrl              String?   @map("media_url") // Medya URL'i (opsiyonel)
+  fileName              String?   @map("file_name") // Dosya adı (doküman/dosya için)
+  fileSize              Int?      @map("file_size") // Dosya boyutu (bytes)
+  fileType              String?   @map("file_type") // Dosya tipi/MIME type
   latitude              Float? // Konum enlemi
   longitude             Float? // Konum boylamı
   locationName          String?   @map("location_name") @db.Text // Konum adı
   liveLocationExpiresAt DateTime? @map("live_location_expires_at") // Canlı konum süresi dolma zamanı
   repliedToId           String?   @map("replied_to_id") // Yanıtlanan mesaj ID (opsiyonel)
+  forwardedFromId       String?   @map("forwarded_from_id") // İletilen mesaj ID (opsiyonel)
   senderId              String    @map("sender_id") // Gönderen kullanıcı ID
   groupId               String?   @map("group_id") // Rütbe grubu ID (null = LPBH/HERKES)
+  pinned                Boolean   @default(false) // Sabitlendi mi?
+  pinnedAt              DateTime? @map("pinned_at") // Sabitleme zamanı
+  pinnedBy              String?   @map("pinned_by") // Sabitleyen kullanıcı ID
+  editedAt              DateTime? @map("edited_at") // Düzenleme zamanı
+  expiresAt             DateTime? @map("expires_at") // Süreli mesaj - otomatik silinme zamanı
+  selfDestruct          Boolean   @default(false) @map("self_destruct") // Süreli mesaj mı?
+  selfDestructSeconds   Int?      @map("self_destruct_seconds") // Süreli mesaj kaç saniye sonra silinecek (5s, 10s, 30s, 1m, 1h, 1d, 1w)
+  recipientId           String?   @map("recipient_id") // Özel mesaj alıcı ID (null = grup mesajı)
   createdAt             DateTime  @default(now()) @map("created_at")
   updatedAt             DateTime  @updatedAt @map("updated_at")
   deletedAt             DateTime? @map("deleted_at") // Silinen mesajlar için soft delete
 
-  sender    User       @relation(fields: [senderId], references: [id], onDelete: Cascade)
-  group     RoleGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
-  repliedTo Message?   @relation("MessageReplies", fields: [repliedToId], references: [id], onDelete: SetNull)
-  replies   Message[]  @relation("MessageReplies")
+  sender            User              @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  group             RoleGroup?        @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  repliedTo         Message?          @relation("MessageReplies", fields: [repliedToId], references: [id], onDelete: SetNull)
+  replies           Message[]         @relation("MessageReplies")
+  forwardedFrom     Message?          @relation("MessageForwards", fields: [forwardedFromId], references: [id], onDelete: SetNull)
+  forwardedMessages Message[]         @relation("MessageForwards")
+  pinnedByUser      User?             @relation("PinnedMessages", fields: [pinnedBy], references: [id], onDelete: SetNull)
+  recipient         User?             @relation("PrivateMessages", fields: [recipientId], references: [id], onDelete: Cascade)
+  reactions         MessageReaction[]
+  readReceipts      ReadReceipt[]
+  starredBy         StarredMessage[]
 
   @@index([senderId])
   @@index([createdAt])
   @@index([type])
   @@index([groupId])
+  @@index([pinned])
+  @@index([forwardedFromId])
+  @@index([recipientId])
+  @@index([expiresAt])
+  @@index([selfDestruct])
   @@map("messages")
+}
+
+// Mesaj Reaksiyonları
+model MessageReaction {
+  id        String   @id @default(cuid())
+  messageId String   @map("message_id")
+  userId    String   @map("user_id")
+  emoji     String // Reaksiyon emoji (👍, ❤️, 😂, etc.)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+  @@index([userId])
+  @@map("message_reactions")
+}
+
+// Okundu Bilgileri (Mesajlar için)
+model ReadReceipt {
+  id        String   @id @default(cuid())
+  messageId String   @map("message_id")
+  userId    String   @map("user_id")
+  readAt    DateTime @default(now()) @map("read_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+  @@index([userId])
+  @@index([readAt])
+  @@map("read_receipts")
+}
+
+// Yıldızlı Mesajlar
+model StarredMessage {
+  id        String   @id @default(cuid())
+  messageId String   @map("message_id")
+  userId    String   @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId])
+  @@index([messageId])
+  @@index([userId])
+  @@map("starred_messages")
+}
+
+// Okundu Bilgileri
+model ReadStatus {
+  id        String   @id @default(cuid())
+  eventType String   @map("event_type") // "meeting" | "event" | "assignment" | "announcement" | "research"
+  eventId   String   @map("event_id") // Event ID (meeting, event, assignment, announcement, research)
+  userId    String   @map("user_id") // Okuyan kullanıcı ID
+  readAt    DateTime @default(now()) @map("read_at") // Okuma tarihi
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventType, eventId, userId])
+  @@index([eventType, eventId])
+  @@index([userId])
+  @@index([readAt])
+  @@map("read_statuses")
+}
+
+// Çağrılar (Voice/Video Calls)
+model Call {
+  id         String    @id @default(cuid())
+  callerId   String    @map("caller_id") // Arayan kullanıcı ID
+  receiverId String    @map("receiver_id") // Aranan kullanıcı ID (one-to-one için)
+  groupId    String?   @map("group_id") // Grup ID (group call için)
+  type       String // "audio" | "video"
+  status     String    @default("pending") // "pending" | "ringing" | "active" | "ended" | "missed" | "rejected"
+  startedAt  DateTime? @map("started_at") // Başlama zamanı
+  endedAt    DateTime? @map("ended_at") // Bitme zamanı
+  duration   Int? // Saniye cinsinden süre
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  caller   User       @relation("CallerCalls", fields: [callerId], references: [id], onDelete: Cascade)
+  receiver User       @relation("ReceiverCalls", fields: [receiverId], references: [id], onDelete: Cascade)
+  group    RoleGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  @@index([callerId])
+  @@index([receiverId])
+  @@index([groupId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("calls")
+}
+
+model SystemSettings {
+  id        String   @id @default(cuid())
+  key       String   @unique // Setting key (e.g., "twoFactorEnabled")
+  value     String // Setting value (JSON string for complex values)
+  updatedBy String?  @map("updated_by") // User ID who updated this setting
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("system_settings")
 }

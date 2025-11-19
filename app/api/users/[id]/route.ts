@@ -46,6 +46,8 @@ export async function PUT(
       yakiniTelefon,
       ruhsatSeriNo,
       kanGrubu,
+      plaka,
+      ehliyetTuru,
     } = body;
 
     // Kullanıcının var olup olmadığını kontrol et
@@ -92,6 +94,17 @@ export async function PUT(
     if (yakiniTelefon !== undefined) updateData.yakiniTelefon = yakiniTelefon || null;
     if (ruhsatSeriNo !== undefined) updateData.ruhsatSeriNo = ruhsatSeriNo || null;
     if (kanGrubu !== undefined) updateData.kanGrubu = kanGrubu || null;
+    if (plaka !== undefined) {
+      updateData.plaka = plaka && typeof plaka === 'string' && plaka.trim() ? plaka.trim().toUpperCase() : null;
+    }
+    if (ehliyetTuru !== undefined) {
+      // Ehliyet türü array olarak gelmeli, değilse boş array yap
+      if (Array.isArray(ehliyetTuru)) {
+        updateData.ehliyetTuru = ehliyetTuru.filter(t => t && typeof t === 'string' && t.trim());
+      } else {
+        updateData.ehliyetTuru = [];
+      }
+    }
 
     // Kullanıcıyı güncelle
     const updatedUser = await prisma.user.update({
@@ -110,6 +123,8 @@ export async function PUT(
         yakiniTelefon: true,
         ruhsatSeriNo: true,
         kanGrubu: true,
+        plaka: true,
+        ehliyetTuru: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -139,8 +154,15 @@ export async function PUT(
     return NextResponse.json(updatedUser);
   } catch (error) {
     console.error('User update error:', error);
+    console.error('Error details:', {
+      message: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return NextResponse.json(
-      { error: 'Üye güncellenemedi' },
+      { 
+        error: 'Üye güncellenemedi',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }

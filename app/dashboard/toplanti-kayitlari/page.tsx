@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
+import { Button } from '@/components/ui';
 import { redirect } from 'next/navigation';
 import { hasPermission } from '@/lib/auth';
 import PDFViewer from '@/components/PDFViewer';
+import ReadStatusIndicator from '@/components/ReadStatusIndicator';
 
 interface Meeting {
   id: string;
@@ -53,6 +55,8 @@ export default function ToplantiKayitlariPage() {
   const [viewingPdfUrl, setViewingPdfUrl] = useState<string | null>(null);
   const [viewingPdfTitle, setViewingPdfTitle] = useState<string>('');
   const [deletingMeetingId, setDeletingMeetingId] = useState<string | null>(null);
+  const dropdownButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [readStatuses, setReadStatuses] = useState<Record<string, boolean>>({}); // meetingId -> isRead
 
   // Upload form state
   const [uploadFormData, setUploadFormData] = useState({
@@ -63,21 +67,46 @@ export default function ToplantiKayitlariPage() {
     visibility: 'herkes' as 'yönetim' | 'member' | 'herkes',
   });
 
+  // Tüm toplantıları okundu işaretle
+  const markAllAsRead = async () => {
+    if (!session?.user?.id) return;
+
+    try {
+      const res = await fetch('/api/read-status', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ eventType: 'meeting' }),
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('Mark all meetings as read failed:', errorData);
+      }
+    } catch (error) {
+      console.error('Mark all meetings as read error:', error);
+    }
+  };
+
   useEffect(() => {
     if (status === 'unauthenticated') {
       redirect('/login');
     }
     if (session) {
+      // Sayfa yüklendiğinde tüm toplantıları okundu işaretle
+      markAllAsRead();
       fetchMeetings();
       fetchUsers();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, status]);
 
   // Dropdown dışına tıklandığında kapat
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
-      if (showUserFilterDropdown && !target.closest('.user-filter-dropdown')) {
+      if (showUserFilterDropdown && !target.closest('.user-filter-dropdown') && !target.closest('.fixed.z-\\[9999\\]')) {
         setShowUserFilterDropdown(false);
       }
     };
@@ -99,10 +128,70 @@ export default function ToplantiKayitlariPage() {
       }
       const data = await res.json();
       setMeetings(data);
+      // Okuma durumlarını getir
+      if (session?.user?.id) {
+        await fetchReadStatuses(data);
+      }
     } catch (error: any) {
       setError(error.message || 'Bir hata oluştu');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Okuma durumlarını getir
+  const fetchReadStatuses = async (meetingsList: Meeting[]) => {
+    if (!session?.user?.id) return;
+
+    try {
+      const statusPromises = meetingsList.map(async (meeting) => {
+        const res = await fetch(`/api/read-status?eventType=meeting&eventId=${meeting.id}`, {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const data = await res.json();
+          // Kullanıcının okuduğunu kontrol et
+          const isRead = data.readBy.some((user: any) => user.id === session.user.id);
+          return { meetingId: meeting.id, isRead };
+        }
+        return { meetingId: meeting.id, isRead: false };
+      });
+
+      const statuses = await Promise.all(statusPromises);
+      const statusMap: Record<string, boolean> = {};
+      statuses.forEach(({ meetingId, isRead }) => {
+        statusMap[meetingId] = isRead;
+      });
+      setReadStatuses(statusMap);
+    } catch (error) {
+      console.error('Read statuses fetch error:', error);
+    }
+  };
+
+  // Okundu işaretle
+  const markAsRead = async (meetingId: string) => {
+    if (!session?.user?.id) return;
+
+    try {
+      await fetch('/api/read-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          eventType: 'meeting',
+          eventId: meetingId,
+        }),
+        credentials: 'include',
+      });
+
+      // Local state'i güncelle
+      setReadStatuses((prev) => ({
+        ...prev,
+        [meetingId]: true,
+      }));
+    } catch (error) {
+      console.error('Mark as read error:', error);
     }
   };
 
@@ -331,12 +420,13 @@ export default function ToplantiKayitlariPage() {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold text-white">Toplantı Kayıtları</h1>
         {canCreate && (
-          <button
+          <Button
             onClick={() => setShowUploadForm(!showUploadForm)}
-            className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30"
+            variant="primary"
+            className="px-4 py-2"
           >
             {showUploadForm ? 'İptal' : 'Yeni Toplantı Kaydı Ekle'}
-          </button>
+          </Button>
         )}
       </div>
 
@@ -452,8 +542,8 @@ export default function ToplantiKayitlariPage() {
       )}
 
       {/* Search and Filter Bar */}
-      <div className="bg-background-secondary rounded-md p-4 border border-gray-700 backdrop-blur-sm relative">
-        <div className="flex gap-3 flex-wrap">
+      <div className="bg-background-secondary rounded-md p-4 border border-gray-700 backdrop-blur-sm relative z-50">
+        <div className="flex gap-3 flex-wrap items-center">
           <div className="flex-1 min-w-[200px]">
             <input
               type="text"
@@ -463,11 +553,12 @@ export default function ToplantiKayitlariPage() {
               className="w-full px-4 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
             />
           </div>
-          <div className="relative flex-shrink-0 user-filter-dropdown" style={{ minWidth: '250px' }}>
+          <div className="relative user-filter-dropdown z-50" style={{ minWidth: '250px' }}>
             <button
+              ref={dropdownButtonRef}
               type="button"
               onClick={() => setShowUserFilterDropdown(!showUserFilterDropdown)}
-              className="w-full px-4 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all text-left flex items-center justify-between relative"
+              className="w-full px-4 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all text-left flex items-center justify-between"
             >
               <span>
                 {selectedUserFilters.length === 0
@@ -475,7 +566,7 @@ export default function ToplantiKayitlariPage() {
                   : `${selectedUserFilters.length} Üye Seçildi`}
               </span>
               <svg
-                className={`w-5 h-5 transition-transform ${showUserFilterDropdown ? 'rotate-180' : ''}`}
+                className={`w-5 h-5 transition-transform flex-shrink-0 ${showUserFilterDropdown ? 'rotate-180' : ''}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -484,36 +575,47 @@ export default function ToplantiKayitlariPage() {
               </svg>
             </button>
             {showUserFilterDropdown && (
-              <div className="absolute z-[100] mt-2 w-full bg-background border border-gray-700 rounded-md shadow-xl max-h-64 overflow-y-auto backdrop-blur-sm">
-                <div className="p-2">
-                  {users.map((user) => {
-                    const isSelected = selectedUserFilters.includes(user.id);
-                    return (
-                      <label
-                        key={user.id}
-                        className="flex items-center gap-3 px-3 py-2 hover:bg-background-tertiary rounded-md cursor-pointer transition-all"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            if (e.target.checked) {
-                              setSelectedUserFilters([...selectedUserFilters, user.id]);
-                            } else {
-                              setSelectedUserFilters(selectedUserFilters.filter(id => id !== user.id));
-                            }
-                          }}
-                          className="w-4 h-4 text-primary bg-background border-gray-600 rounded focus:ring-primary focus:ring-2"
+              <>
+                {/* Portal overlay for dropdown */}
+                <div 
+                  className="fixed inset-0 z-[9998]" 
+                  onClick={() => setShowUserFilterDropdown(false)}
+                  style={{ background: 'transparent' }}
+                />
+                <div 
+                  className="absolute top-full left-0 mt-1 w-full bg-background border border-gray-700 rounded-md shadow-xl max-h-64 overflow-y-auto backdrop-blur-sm z-[9999]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="p-2">
+                    {users.map((user) => {
+                      const isSelected = selectedUserFilters.includes(user.id);
+                      return (
+                        <label
+                          key={user.id}
+                          className="flex items-center gap-3 px-3 py-2 hover:bg-background-tertiary rounded-md cursor-pointer transition-all"
                           onClick={(e) => e.stopPropagation()}
-                        />
-                        <span className="text-white text-sm">{getUserName(user)}</span>
-                      </label>
-                    );
-                  })}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              if (e.target.checked) {
+                                setSelectedUserFilters([...selectedUserFilters, user.id]);
+                              } else {
+                                setSelectedUserFilters(selectedUserFilters.filter(id => id !== user.id));
+                              }
+                            }}
+                            className="w-4 h-4 text-primary bg-background border-gray-600 rounded focus:ring-primary focus:ring-2"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <span className="text-white text-sm">{getUserName(user)}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              </>
             )}
           </div>
           {(searchTerm || selectedUserFilters.length > 0) && (
@@ -522,7 +624,7 @@ export default function ToplantiKayitlariPage() {
                 setSearchTerm('');
                 setSelectedUserFilters([]);
               }}
-              className="px-4 py-2 text-gray-400 hover:text-white transition"
+              className="px-4 py-2 text-gray-400 hover:text-white transition whitespace-nowrap"
               title="Filtreleri Temizle"
             >
               ✕ Temizle
@@ -562,7 +664,7 @@ export default function ToplantiKayitlariPage() {
       </div>
 
       {/* Meetings List */}
-      <div className="bg-background-secondary rounded-md border border-gray-700 overflow-hidden backdrop-blur-sm relative z-10">
+      <div className="bg-background-secondary rounded-md border border-gray-700 overflow-hidden backdrop-blur-sm relative z-0">
         {filteredMeetings.length === 0 ? (
           <div className="p-8 text-center text-gray-400">
             {searchTerm || selectedUserFilters.length > 0
@@ -570,7 +672,7 @@ export default function ToplantiKayitlariPage() {
               : 'Henüz toplantı kaydı eklenmemiş'}
           </div>
         ) : (
-          <div className="divide-y divide-gray-800 relative z-10">
+          <div className="divide-y divide-gray-800">
             {filteredMeetings.map((meeting) => (
               <div
                 key={meeting.id}
@@ -578,13 +680,30 @@ export default function ToplantiKayitlariPage() {
               >
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-white mb-2">
-                      {searchTerm.trim() ? (
-                        highlightText(meeting.title, searchTerm)
-                      ) : (
-                        meeting.title
+                    <div className="flex items-center gap-2 mb-2">
+                      {/* Yeşil nokta - okunmamışsa göster, başlığın önünde */}
+                      {!(readStatuses[meeting.id] || false) && (
+                        <div className="w-5 h-5 bg-green-500 rounded-full flex-shrink-0" />
                       )}
-                    </h3>
+                      <h3 className="text-lg font-semibold text-white">
+                        {searchTerm.trim() ? (
+                          highlightText(meeting.title, searchTerm)
+                        ) : (
+                          meeting.title
+                        )}
+                      </h3>
+                      <ReadStatusIndicator
+                        eventType="meeting"
+                        eventId={meeting.id}
+                        isRead={readStatuses[meeting.id] || false}
+                        onMarkAsRead={() => {
+                          setReadStatuses((prev) => ({
+                            ...prev,
+                            [meeting.id]: true,
+                          }));
+                        }}
+                      />
+                    </div>
                     <div className="text-sm text-gray-400 space-y-1">
                       <p>
                         Tarih:{' '}
@@ -654,6 +773,8 @@ export default function ToplantiKayitlariPage() {
                         setViewingPdfUrl(`/api/meetings/${meeting.id}/file`);
                         setViewingPdfTitle(meeting.title);
                         setPdfViewerOpen(true);
+                        // PDF açıldığında otomatik okundu işaretle
+                        markAsRead(meeting.id);
                       }}
                       className="p-2 bg-background-tertiary text-white rounded-md hover:bg-gray-700 transition"
                       title="Görüntüle"

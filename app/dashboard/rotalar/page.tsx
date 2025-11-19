@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
+import { Button, Dialog, DialogContent, DialogTitle, DialogClose } from '@/components/ui';
 import { redirect } from 'next/navigation';
 import { hasPermission } from '@/lib/auth';
 
@@ -180,12 +181,9 @@ export default function RotalarPage() {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold text-white">Rotalar</h1>
         {canCreate && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30"
-          >
+          <Button onClick={() => setShowAddModal(true)} variant="primary">
             Rota Ekle
-          </button>
+          </Button>
         )}
       </div>
 
@@ -300,278 +298,189 @@ export default function RotalarPage() {
         )}
       </div>
 
-      {/* Rota Ekle Modal */}
-      {showAddModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={() => {
-            setShowAddModal(false);
-            setError('');
-            setFormData({
-              name: '',
-              startPoint: '',
-              endPoint: '',
-              url: '',
-              waypoints: [],
-            });
-          }}
-        >
-          <div
-            className="bg-background-secondary rounded-md border border-gray-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto backdrop-blur-sm shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold text-white">
-                  Yeni Rota Ekle
-                </h2>
+      <Dialog open={showAddModal} onOpenChange={(open)=> setShowAddModal(open)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <div className="flex justify-between items-center mb-4">
+            <DialogTitle>Yeni Rota Ekle</DialogTitle>
+            <DialogClose asChild>
+              <Button variant="ghost" size="icon" className="text-gray-400 text-2xl">×</Button>
+            </DialogClose>
+          </div>
+
+          {error && (
+            <div className="bg-red-900/20 border border-red-500/50 p-3 rounded-md mb-4 backdrop-blur-sm">
+              <p className="text-red-400 text-sm">{error}</p>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Rota İsmi <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
+                placeholder="Örn: İstanbul - Ankara Rotası"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Kalkış Noktası <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.startPoint}
+                onChange={(e) => setFormData({ ...formData, startPoint: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
+                placeholder="Örn: İstanbul, Türkiye"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Duraklar (Opsiyonel)
+              </label>
+              <div className="space-y-2">
+                {formData.waypoints.map((waypoint, index) => (
+                  <div key={index} className="flex gap-2 items-start">
+                    <div className="flex-1 space-y-2">
+                      <input
+                        type="text"
+                        value={waypoint.name}
+                        onChange={(e) => updateWaypoint(index, 'name', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
+                        placeholder="Durak adı"
+                      />
+                      <input
+                        type="url"
+                        value={waypoint.googleMapsLink || ''}
+                        onChange={(e) => updateWaypoint(index, 'googleMapsLink', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
+                        placeholder="Google Maps linki (opsiyonel)"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeWaypoint(index)}
+                      className="p-2 text-red-400 hover:text-red-300 transition-all"
+                      title="Durağı Kaldır"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
                 <button
-                  onClick={() => {
-                    setShowAddModal(false);
-                    setError('');
-                    setFormData({
-                      name: '',
-                      startPoint: '',
-                      endPoint: '',
-                      url: '',
-                      waypoints: [],
-                    });
-                  }}
-                  className="text-gray-400 hover:text-white transition-all text-2xl font-bold"
+                  type="button"
+                  onClick={addWaypoint}
+                  className="w-full px-3 py-2 border border-gray-700 border-dashed text-gray-400 hover:text-white hover:border-gray-600 rounded-md transition-all text-sm"
                 >
-                  ×
+                  + Durak Ekle
                 </button>
               </div>
+            </div>
 
-              {error && (
-                <div className="bg-red-900/20 border border-red-500/50 p-3 rounded-md mb-4 backdrop-blur-sm">
-                  <p className="text-red-400 text-sm">{error}</p>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Varış Noktası <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.endPoint}
+                onChange={(e) => setFormData({ ...formData, endPoint: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
+                placeholder="Örn: Ankara, Türkiye"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Google Maps Rota URL'si <span className="text-red-400">*</span>
+              </label>
+              <textarea
+                required
+                value={formData.url}
+                onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                rows={4}
+                className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
+                placeholder="https://www.google.com/maps/dir/..."
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Google Maps'te rotayı oluşturduktan sonra "Paylaş" butonundan link'i kopyalayın.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setShowAddModal(false)}>İptal</Button>
+              <Button type="submit" disabled={isSubmitting} variant="primary">{isSubmitting ? 'Ekleniyor...' : 'Ekle'}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showViewModal && Boolean(viewingRoute)} onOpenChange={(open)=> setShowViewModal(open)}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <div className="flex justify-between items-center mb-4">
+            <DialogTitle>Rota Detayı</DialogTitle>
+            <DialogClose asChild>
+              <Button variant="ghost" size="icon" className="text-gray-400 text-2xl">×</Button>
+            </DialogClose>
+          </div>
+
+          {viewingRoute && (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-medium text-gray-300 mb-1">Kalkış Noktası:</p>
+                <p className="text-white">{viewingRoute.startPoint}</p>
+              </div>
+
+              {viewingRoute.waypoints?.length > 0 && (
+                <div>
+                  <p className="text-sm font-medium text-gray-300 mb-2">Duraklar:</p>
+                  <div className="space-y-2">
+                    {viewingRoute.waypoints.map((waypoint, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-background rounded-md border border-gray-700">
+                        <p className="text-white">{waypoint.name}</p>
+                        {waypoint.googleMapsLink && (
+                          <a
+                            href={waypoint.googleMapsLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary/20 text-primary rounded-md hover:bg-primary/30 transition-all text-sm"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+                            </svg>
+                            Google Maps'te Aç
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Rota İsmi <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
-                    placeholder="Örn: İstanbul - Ankara Rotası"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Kalkış Noktası <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.startPoint}
-                    onChange={(e) => setFormData({ ...formData, startPoint: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
-                    placeholder="Örn: İstanbul, Türkiye"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Duraklar (Opsiyonel)
-                  </label>
-                  <div className="space-y-2">
-                    {formData.waypoints.map((waypoint, index) => (
-                      <div key={index} className="flex gap-2 items-start">
-                        <div className="flex-1 space-y-2">
-                          <input
-                            type="text"
-                            value={waypoint.name}
-                            onChange={(e) => updateWaypoint(index, 'name', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
-                            placeholder="Durak adı"
-                          />
-                          <input
-                            type="url"
-                            value={waypoint.googleMapsLink || ''}
-                            onChange={(e) => updateWaypoint(index, 'googleMapsLink', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
-                            placeholder="Google Maps linki (opsiyonel)"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeWaypoint(index)}
-                          className="p-2 text-red-400 hover:text-red-300 transition-all"
-                          title="Durağı Kaldır"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={addWaypoint}
-                      className="w-full px-3 py-2 border border-gray-700 border-dashed text-gray-400 hover:text-white hover:border-gray-600 rounded-md transition-all text-sm"
-                    >
-                      + Durak Ekle
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Varış Noktası <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.endPoint}
-                    onChange={(e) => setFormData({ ...formData, endPoint: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
-                    placeholder="Örn: Ankara, Türkiye"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Google Maps Rota URL'si <span className="text-red-400">*</span>
-                  </label>
-                  <textarea
-                    required
-                    value={formData.url}
-                    onChange={(e) => setFormData({ ...formData, url: e.target.value })}
-                    rows={4}
-                    className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
-                    placeholder="https://www.google.com/maps/dir/..."
-                  />
-                  <p className="text-xs text-gray-400 mt-1">
-                    Google Maps'te rotayı oluşturduktan sonra "Paylaş" butonundan link'i kopyalayın.
-                  </p>
-                </div>
-
-                <div className="flex justify-end gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddModal(false);
-                      setError('');
-                      setFormData({
-                        name: '',
-                        startPoint: '',
-                        endPoint: '',
-                        url: '',
-                        waypoints: [],
-                      });
-                    }}
-                    className="px-4 py-2 bg-background-tertiary text-white rounded-md hover:bg-gray-700 transition-all"
-                  >
-                    İptal
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-all disabled:opacity-50 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30"
-                  >
-                    {isSubmitting ? 'Ekleniyor...' : 'Rota Ekle'}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Rota Detayları Modal */}
-      {showViewModal && viewingRoute && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={() => {
-            setShowViewModal(false);
-            setViewingRoute(null);
-          }}
-        >
-          <div
-            className="bg-background-secondary rounded-md border border-gray-700 max-w-3xl w-full max-h-[90vh] overflow-y-auto backdrop-blur-sm shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold text-white">
-                  {viewingRoute.name}
-                </h2>
-                <button
-                  onClick={() => {
-                    setShowViewModal(false);
-                    setViewingRoute(null);
-                  }}
-                  className="text-gray-400 hover:text-white transition-all text-2xl font-bold"
-                >
-                  ×
-                </button>
+              <div>
+                <p className="text-sm font-medium text-gray-300 mb-1">Varış Noktası:</p>
+                <p className="text-white">{viewingRoute.endPoint}</p>
               </div>
 
-              <div className="space-y-4">
-                <div>
-                  <p className="text-sm font-medium text-gray-300 mb-1">Kalkış Noktası:</p>
-                  <p className="text-white">{viewingRoute.startPoint}</p>
-                </div>
-
-                {viewingRoute.waypoints && viewingRoute.waypoints.length > 0 && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-300 mb-2">Duraklar:</p>
-                    <div className="space-y-2">
-                      {viewingRoute.waypoints.map((waypoint, index) => (
-                        <div key={index} className="flex items-center justify-between p-3 bg-background rounded-md border border-gray-700">
-                          <p className="text-white">{waypoint.name}</p>
-                          {waypoint.googleMapsLink && (
-                            <a
-                              href={waypoint.googleMapsLink}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary/20 text-primary rounded-md hover:bg-primary/30 transition-all text-sm"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                              </svg>
-                              Google Maps'te Aç
-                            </a>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <p className="text-sm font-medium text-gray-300 mb-1">Varış Noktası:</p>
-                  <p className="text-white">{viewingRoute.endPoint}</p>
-                </div>
-
-                <div className="flex justify-end pt-4">
-                  <a
-                    href={viewingRoute.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                    </svg>
-                    Rota'yı Google Maps'te Aç
-                  </a>
-                </div>
+              <div className="flex justify-end">
+                <Button onClick={() => setShowViewModal(false)} variant="secondary">Kapat</Button>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -33,6 +33,8 @@ export async function GET(request: NextRequest) {
         yakiniTelefon: true,
         ruhsatSeriNo: true,
         kanGrubu: true,
+        plaka: true,
+        ehliyetTuru: true,
         createdAt: true,
       },
     });

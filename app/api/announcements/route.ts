@@ -46,28 +46,64 @@ export async function GET(request: NextRequest) {
 
     if (!role || !role.group) {
       // Grup yoksa sadece herkes için olanları göster
-      const announcements = await prisma.announcement.findMany({
-        where: {
-          visibility: 'herkes',
+    // Planlı duyuruları kontrol et ve yayınla (scheduledAt geçmişte olanlar)
+    const now = new Date();
+    await prisma.announcement.updateMany({
+      where: {
+        status: 'scheduled',
+        scheduledAt: {
+          lte: now,
         },
-        include: {
-          creator: {
-            select: {
-              id: true,
-              username: true,
-              isim: true,
-              soyisim: true,
-              rutbe: true,
+      },
+      data: {
+        status: 'published',
+      },
+    });
+
+    // Planlı duyuruları al (sadece yayınlananlar ve kullanıcının oluşturduğu planlı duyurular)
+    const announcements = await prisma.announcement.findMany({
+      where: {
+        visibility: 'herkes',
+        OR: [
+          { status: 'published' },
+          {
+            status: 'scheduled',
+            scheduledAt: {
+              lte: now,
             },
           },
+          // notifyBefore etkin olan planlı duyuruları (gelecekte olsa bile) HERKESE göster
+          {
+            status: 'scheduled',
+            notifyBefore: true,
+            scheduledAt: {
+              gt: now,
+            },
+          },
+          {
+            status: 'scheduled',
+            createdBy: session.user.id, // Kullanıcının oluşturduğu planlı duyurular
+          },
+        ],
+      },
+      include: {
+        creator: {
+          select: {
+            id: true,
+            username: true,
+            isim: true,
+            soyisim: true,
+            rutbe: true,
+          },
         },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        take: limit,
-      });
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: limit,
+    });
 
-      return NextResponse.json(announcements);
+    return NextResponse.json(announcements);
     }
 
     const userGroupOrder = role.group.order;
@@ -85,11 +121,47 @@ export async function GET(request: NextRequest) {
       allowedVisibilities = ['herkes'];
     }
 
+    // Planlı duyuruları kontrol et ve yayınla (scheduledAt geçmişte olanlar)
+    const now = new Date();
+    await prisma.announcement.updateMany({
+      where: {
+        status: 'scheduled',
+        scheduledAt: {
+          lte: now,
+        },
+      },
+      data: {
+        status: 'published',
+      },
+    });
+
+    // Planlı duyuruları al (sadece yayınlananlar ve kullanıcının oluşturduğu planlı duyurular)
     const announcements = await prisma.announcement.findMany({
       where: {
         visibility: {
           in: allowedVisibilities,
         },
+        OR: [
+          { status: 'published' },
+          {
+            status: 'scheduled',
+            scheduledAt: {
+              lte: now,
+            },
+          },
+          // notifyBefore etkin olan planlı duyuruları (gelecekte olsa bile) görünür kıl
+          {
+            status: 'scheduled',
+            notifyBefore: true,
+            scheduledAt: {
+              gt: now,
+            },
+          },
+          {
+            status: 'scheduled',
+            createdBy: session.user.id, // Kullanıcının oluşturduğu planlı duyurular
+          },
+        ],
       },
       include: {
         creator: {
@@ -140,7 +212,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { title, content, visibility, importance } = body;
+    const { title, content, visibility, importance, isScheduled, scheduledAt, notifyBefore } = body;
 
     if (!title || !content || !visibility) {
       return NextResponse.json(
@@ -163,6 +235,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Planlı duyuru kontrolü
+    let announcementStatus = 'published';
+    let finalScheduledAt: Date | null = null;
+    
+    if (isScheduled && scheduledAt) {
+      const scheduledDate = new Date(scheduledAt);
+      const now = new Date();
+      
+      if (scheduledDate <= now) {
+        return NextResponse.json(
+          { error: 'Planlı duyuru tarihi gelecekte olmalıdır' },
+          { status: 400 }
+        );
+      }
+      
+      announcementStatus = 'scheduled';
+      finalScheduledAt = scheduledDate;
+    }
+
     const newAnnouncement = await prisma.announcement.create({
       data: {
         title,
@@ -170,6 +261,9 @@ export async function POST(request: NextRequest) {
         visibility,
         importance: importance || 'normal',
         createdBy: session.user.id,
+        scheduledAt: finalScheduledAt,
+        notifyBefore: notifyBefore || false,
+        status: announcementStatus,
       },
       include: {
         creator: {

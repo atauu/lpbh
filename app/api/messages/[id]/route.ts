@@ -59,6 +59,7 @@ export async function PUT(
       where: { id: messageId },
       data: {
         content: content || null,
+        editedAt: new Date(),
       },
       include: {
         sender: {
@@ -88,6 +89,51 @@ export async function PUT(
                 soyisim: true,
               },
             },
+          },
+        },
+        forwardedFrom: {
+          include: {
+            sender: {
+              select: {
+                id: true,
+                username: true,
+                rutbe: true,
+                isim: true,
+                soyisim: true,
+              },
+            },
+          },
+        },
+        reactions: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                rutbe: true,
+                isim: true,
+                soyisim: true,
+              },
+            },
+          },
+        },
+        readReceipts: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                rutbe: true,
+                isim: true,
+                soyisim: true,
+              },
+            },
+          },
+        },
+        starredBy: {
+          select: {
+            id: true,
+            userId: true,
           },
         },
       },

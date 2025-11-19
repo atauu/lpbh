@@ -46,5 +46,13 @@ next-env.d.ts
 
 uploads/
 
+# database data directories
+data/
+mysql-data/
+
 # update logs
 update.log
+
+# large archive files
+*.tgz
+lpbh-excluded.tgz

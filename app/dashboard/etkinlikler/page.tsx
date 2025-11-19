@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
+import { Button } from '@/components/ui';
 import { redirect } from 'next/navigation';
 import { hasPermission } from '@/lib/auth';
+import ReadStatusIndicator from '@/components/ReadStatusIndicator';
 
 
 interface Event {
@@ -47,6 +49,7 @@ export default function EtkinliklerPage() {
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
   const [rsvpStatuses, setRsvpStatuses] = useState<Record<string, string | null>>({}); // eventId -> status
   const [isSavingRsvp, setIsSavingRsvp] = useState<string | null>(null); // eventId
+  const [readStatuses, setReadStatuses] = useState<Record<string, boolean>>({}); // eventId -> isRead
 
   // Form state
   const [formData, setFormData] = useState({
@@ -57,13 +60,38 @@ export default function EtkinliklerPage() {
     description: '',
   });
 
+  // Tüm eventleri okundu işaretle
+  const markAllAsRead = async () => {
+    if (!session?.user?.id) return;
+
+    try {
+      const res = await fetch('/api/read-status', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ eventType: 'event' }),
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('Mark all events as read failed:', errorData);
+      }
+    } catch (error) {
+      console.error('Mark all events as read error:', error);
+    }
+  };
+
   useEffect(() => {
     if (status === 'unauthenticated') {
       redirect('/login');
     }
     if (session) {
+      // Sayfa yüklendiğinde tüm eventleri okundu işaretle
+      markAllAsRead();
       fetchEvents();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, status]);
 
   const fetchEvents = async () => {
@@ -90,6 +118,8 @@ export default function EtkinliklerPage() {
           }
         });
         setRsvpStatuses(userRsvps);
+        // Okuma durumlarını getir
+        await fetchReadStatuses(data);
       }
     } catch (error: any) {
       setError(error.message || 'Bir hata oluştu');
@@ -130,6 +160,60 @@ export default function EtkinliklerPage() {
       setError(error.message || 'Katılım durumu kaydedilemedi');
     } finally {
       setIsSavingRsvp(null);
+    }
+  };
+
+  // Okuma durumlarını getir
+  const fetchReadStatuses = async (eventsList: Event[]) => {
+    if (!session?.user?.id) return;
+
+    try {
+      const statusPromises = eventsList.map(async (event) => {
+        const res = await fetch(`/api/read-status?eventType=event&eventId=${event.id}`, {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const isRead = data.readBy.some((user: any) => user.id === session.user.id);
+          return { eventId: event.id, isRead };
+        }
+        return { eventId: event.id, isRead: false };
+      });
+
+      const statuses = await Promise.all(statusPromises);
+      const statusMap: Record<string, boolean> = {};
+      statuses.forEach(({ eventId, isRead }) => {
+        statusMap[eventId] = isRead;
+      });
+      setReadStatuses(statusMap);
+    } catch (error) {
+      console.error('Read statuses fetch error:', error);
+    }
+  };
+
+  // Okundu işaretle
+  const markAsRead = async (eventId: string) => {
+    if (!session?.user?.id) return;
+
+    try {
+      await fetch('/api/read-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          eventType: 'event',
+          eventId,
+        }),
+        credentials: 'include',
+      });
+
+      setReadStatuses((prev) => ({
+        ...prev,
+        [eventId]: true,
+      }));
+    } catch (error) {
+      console.error('Mark as read error:', error);
     }
   };
 
@@ -249,12 +333,12 @@ export default function EtkinliklerPage() {
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold text-white">Etkinlikler</h1>
         {canCreate && (
-          <button
+          <Button
             onClick={() => setShowAddModal(true)}
             className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30"
           >
             Etkinlik Ekle
-          </button>
+          </Button>
         )}
       </div>
 
@@ -283,9 +367,26 @@ export default function EtkinliklerPage() {
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
                     <div className="flex items-start justify-between mb-2">
-                      <h3 className="text-lg font-semibold text-white">
-                        {event.title}
-                      </h3>
+                      <div className="flex items-center gap-2">
+                        {/* Yeşil nokta - okunmamışsa göster, başlığın önünde */}
+                        {!(readStatuses[event.id] || false) && (
+                          <div className="w-5 h-5 bg-green-500 rounded-full flex-shrink-0" />
+                        )}
+                        <h3 className="text-lg font-semibold text-white">
+                          {event.title}
+                        </h3>
+                        <ReadStatusIndicator
+                          eventType="event"
+                          eventId={event.id}
+                          isRead={readStatuses[event.id] || false}
+                          onMarkAsRead={() => {
+                            setReadStatuses((prev) => ({
+                              ...prev,
+                              [event.id]: true,
+                            }));
+                          }}
+                        />
+                      </div>
                       {/* RSVP Dropdown - Sadece gelecek etkinlikler için */}
                       <div className="flex items-center gap-2 ml-4">
                         <select
@@ -448,9 +549,26 @@ export default function EtkinliklerPage() {
               >
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-white mb-2">
-                      {event.title}
-                    </h3>
+                    <div className="flex items-center gap-2 mb-2">
+                      {/* Yeşil nokta - okunmamışsa göster, başlığın önünde */}
+                      {!(readStatuses[event.id] || false) && (
+                        <div className="w-5 h-5 bg-green-500 rounded-full flex-shrink-0" />
+                      )}
+                      <h3 className="text-lg font-semibold text-white">
+                        {event.title}
+                      </h3>
+                      <ReadStatusIndicator
+                        eventType="event"
+                        eventId={event.id}
+                        isRead={readStatuses[event.id] || false}
+                        onMarkAsRead={() => {
+                          setReadStatuses((prev) => ({
+                            ...prev,
+                            [event.id]: true,
+                          }));
+                        }}
+                      />
+                    </div>
                     <div className="text-sm text-gray-400 space-y-1">
                       <p>
                         Tarih: {formatDateTime(event.eventDate)}

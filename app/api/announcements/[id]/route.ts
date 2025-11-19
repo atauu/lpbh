@@ -77,7 +77,7 @@ export async function PUT(
     }
 
     const body = await request.json();
-    const { title, content, visibility, importance } = body;
+    const { title, content, visibility, importance, isScheduled, scheduledAt, notifyBefore } = body;
 
     // Sadece oluşturan güncelleyebilir
     const announcement = await prisma.announcement.findUnique({
@@ -98,6 +98,30 @@ export async function PUT(
       );
     }
 
+    // Planlı duyuru kontrolü
+    let announcementStatus = announcement.status;
+    let finalScheduledAt: Date | null = announcement.scheduledAt;
+    
+    if (isScheduled !== undefined) {
+      if (isScheduled && scheduledAt) {
+        const scheduledDate = new Date(scheduledAt);
+        const now = new Date();
+        
+        if (scheduledDate <= now) {
+          return NextResponse.json(
+            { error: 'Planlı duyuru tarihi gelecekte olmalıdır' },
+            { status: 400 }
+          );
+        }
+        
+        announcementStatus = 'scheduled';
+        finalScheduledAt = scheduledDate;
+      } else if (!isScheduled) {
+        announcementStatus = 'published';
+        finalScheduledAt = null;
+      }
+    }
+
     const updatedAnnouncement = await prisma.announcement.update({
       where: { id: params.id },
       data: {
@@ -105,6 +129,11 @@ export async function PUT(
         ...(content && { content }),
         ...(visibility && { visibility }),
         ...(importance && { importance }),
+        ...(isScheduled !== undefined && { 
+          status: announcementStatus,
+          scheduledAt: finalScheduledAt,
+          notifyBefore: notifyBefore !== undefined ? notifyBefore : announcement.notifyBefore,
+        }),
       },
       include: {
         creator: {

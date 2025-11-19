@@ -73,13 +73,10 @@ export default withAuth(
         return NextResponse.redirect(loginUrl);
       }
       
-      // Session token'ından 2FA durumunu kontrol et (Prisma Edge Runtime'da çalışmaz)
-      const twoFactorEnabled = (token.twoFactorEnabled as boolean) ?? false;
-      
-      // 2FA kurulmamış veya aktif değilse setup sayfasına yönlendir
-      if (!twoFactorEnabled) {
-        return NextResponse.redirect(new URL('/settings/two-factor?required=true', req.url));
-      }
+      // NOT: 2FA kontrolü middleware'de yapılmıyor
+      // Global 2FA kontrolü lib/auth.ts içinde login sırasında yapılıyor
+      // Client-side'da da login ve verify-2fa sayfalarında kontrol ediliyor
+      // Middleware'de Prisma kullanılamaz, bu yüzden burada 2FA kontrolü yapmıyoruz
       
       // Sayfa bazlı izin kontrolü
       const permissions = token.permissions as any;
@@ -111,6 +108,9 @@ export default withAuth(
           requiredAction = 'read';
         } else if (pathname === '/dashboard/yetkilendirme') {
           requiredResource = 'roles';
+          requiredAction = 'read';
+        } else if (pathname === '/dashboard/vatandas-veritabani') {
+          requiredResource = 'citizenDatabase';
           requiredAction = 'read';
         }
         

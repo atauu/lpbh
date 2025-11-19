@@ -64,17 +64,31 @@ export default function Verify2FAPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Sadece mount olduğunda çalış
 
-  // Session varsa 2FA durumunu kontrol et
+  // Session varsa global 2FA durumunu kontrol et
   useEffect(() => {
     if (session && status === 'authenticated') {
-      const check2FAStatus = async () => {
+      const checkGlobal2FAStatus = async () => {
         try {
+          // Önce global 2FA durumunu kontrol et
+          const globalRes = await fetch('/api/settings/2fa/global-status');
+          const globalStatus = globalRes.ok ? await globalRes.json() : { enabled: false };
+          
+          // Global 2FA kapalıysa direkt dashboard'a yönlendir
+          if (!globalStatus.enabled) {
+            // Pending login bilgilerini temizle
+            sessionStorage.removeItem('pendingLoginUsername');
+            sessionStorage.removeItem('pendingLoginPassword');
+            router.push('/dashboard');
+            return;
+          }
+          
+          // Global 2FA açıksa kullanıcının 2FA durumunu kontrol et
           const res = await fetch('/api/two-factor/status');
           if (res.ok) {
             const data = await res.json();
             
             if (!data.isSetup || !data.enabled) {
-              // 2FA kurulmamış, setup sayfasına yönlendir
+              // Global 2FA açık ama kullanıcının 2FA'sı yok, setup sayfasına yönlendir
               router.push('/settings/two-factor?required=true');
             }
           }
@@ -83,7 +97,7 @@ export default function Verify2FAPage() {
         }
       };
       
-      check2FAStatus();
+      checkGlobal2FAStatus();
     }
   }, [session, status, router]);
 

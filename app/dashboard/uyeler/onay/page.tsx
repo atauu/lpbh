@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
+import { Button } from '@/components/ui';
 import { redirect } from 'next/navigation';
 
 interface PendingUser {
@@ -17,6 +18,8 @@ interface PendingUser {
   yakiniTelefon: string | null;
   ruhsatSeriNo: string | null;
   kanGrubu: string | null;
+  plaka: string | null;
+  ehliyetTuru: string[];
   membershipStatus: string;
   createdAt: string;
   updatedAt: string;
@@ -181,6 +184,18 @@ export default function OnayPage() {
                             <p className="text-white">{user.kanGrubu}</p>
                           </div>
                         )}
+                        {user.plaka && (
+                          <div>
+                            <p className="text-gray-400">Plaka:</p>
+                            <p className="text-white font-mono">{user.plaka}</p>
+                          </div>
+                        )}
+                        {user.ehliyetTuru && user.ehliyetTuru.length > 0 && (
+                          <div>
+                            <p className="text-gray-400">Ehliyet Türü:</p>
+                            <p className="text-white">{user.ehliyetTuru.join(', ')}</p>
+                          </div>
+                        )}
                         {user.ruhsatSeriNo && (
                           <div>
                             <p className="text-gray-400">Ruhsat Seri No:</p>
@@ -218,13 +233,13 @@ export default function OnayPage() {
                       </span>
                     ) : (
                       <>
-                        <button
+                        <Button
                           onClick={() => handleApproval(user.id, 'approve')}
                           disabled={processingId === user.id}
                           className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-all disabled:opacity-50 shadow-lg shadow-primary/20"
                         >
                           {processingId === user.id ? 'İşleniyor...' : 'Onayla'}
-                        </button>
+                        </Button>
                         <button
                           onClick={() => handleApproval(user.id, 'reject')}
                           disabled={processingId === user.id}

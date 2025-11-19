@@ -20,13 +20,15 @@ const nextConfig = {
       
       // Array veya function olabilir, her ikisini de destekle
       if (Array.isArray(config.externals)) {
-        config.externals.push('pdf-parse', 'pdfjs-dist', 'canvas');
+        config.externals.push('pdf-parse', 'pdfjs-dist', 'canvas', 'puppeteer', 'puppeteer-core', 'puppeteer-extra', 'puppeteer-extra-plugin-stealth');
       } else if (typeof config.externals === 'function') {
         const originalExternals = config.externals;
         config.externals = [
           originalExternals,
           (context, request, callback) => {
-            if (request === 'pdf-parse' || request === 'pdfjs-dist' || request === 'canvas') {
+            if (request === 'pdf-parse' || request === 'pdfjs-dist' || request === 'canvas' || 
+                request === 'puppeteer' || request === 'puppeteer-core' || 
+                request === 'puppeteer-extra' || request === 'puppeteer-extra-plugin-stealth') {
               return callback(null, 'commonjs ' + request);
             }
             callback();
@@ -39,6 +41,10 @@ const nextConfig = {
           'pdf-parse': 'commonjs pdf-parse',
           'pdfjs-dist': 'commonjs pdfjs-dist',
           'canvas': 'commonjs canvas',
+          'puppeteer': 'commonjs puppeteer',
+          'puppeteer-core': 'commonjs puppeteer-core',
+          'puppeteer-extra': 'commonjs puppeteer-extra',
+          'puppeteer-extra-plugin-stealth': 'commonjs puppeteer-extra-plugin-stealth',
         };
       }
     } else {

@@ -24,6 +24,8 @@ export default function RegisterInfoPage() {
     yakiniTelefon: '',
     ruhsatSeriNo: '',
     kanGrubu: '',
+    plaka: '',
+    ehliyetTuru: [] as string[],
   });
 
   const kanGrubuOptions = [
@@ -36,6 +38,36 @@ export default function RegisterInfoPage() {
     'O+',
     'O-',
   ];
+
+  const ehliyetTuruOptions = [
+    'A1',
+    'A2',
+    'A',
+    'B1',
+    'B',
+    'BE',
+    'C1',
+    'C1E',
+    'C',
+    'CE',
+    'D1',
+    'D1E',
+    'D',
+    'DE',
+    'F',
+    'G',
+    'H',
+    'M',
+  ];
+
+  const handleEhliyetToggle = (turu: string) => {
+    setFormData(prev => ({
+      ...prev,
+      ehliyetTuru: prev.ehliyetTuru.includes(turu)
+        ? prev.ehliyetTuru.filter(t => t !== turu)
+        : [...prev.ehliyetTuru, turu],
+    }));
+  };
 
   useEffect(() => {
     if (token) {
@@ -217,6 +249,41 @@ export default function RegisterInfoPage() {
                 onChange={(e) => setFormData({ ...formData, ruhsatSeriNo: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
               />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Plaka
+              </label>
+              <input
+                type="text"
+                value={formData.plaka}
+                onChange={(e) => setFormData({ ...formData, plaka: e.target.value.toUpperCase() })}
+                className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all font-mono uppercase"
+                placeholder="34ABC123"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Ehliyet Türü
+              </label>
+              <div className="border border-gray-700 rounded-md p-3 bg-background max-h-48 overflow-y-auto">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {ehliyetTuruOptions.map((turu) => (
+                    <label
+                      key={turu}
+                      className="flex items-center gap-2 cursor-pointer hover:bg-background-tertiary p-2 rounded transition"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={formData.ehliyetTuru.includes(turu)}
+                        onChange={() => handleEhliyetToggle(turu)}
+                        className="w-4 h-4 text-primary bg-background border-gray-600 rounded focus:ring-primary focus:ring-2"
+                      />
+                      <span className="text-white text-sm">{turu}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
           <div>

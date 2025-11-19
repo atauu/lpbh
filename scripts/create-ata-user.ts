@@ -21,6 +21,7 @@ async function main() {
       data: {
         password: hashedPassword,
         rutbe: 'PRESIDENT',
+        membershipStatus: 'approved',
         isim: null,
         soyisim: null,
         tckn: null,
@@ -46,6 +47,7 @@ async function main() {
         username: 'ata',
         password: hashedPassword,
         rutbe: 'PRESIDENT',
+        membershipStatus: 'approved',
         // Diğer alanlar null olarak kalacak
       },
     });

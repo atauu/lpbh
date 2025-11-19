@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { redirect } from 'next/navigation';
 import { hasPermission } from '@/lib/auth';
+import { Button, Checkbox, Label, Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui';
 
 interface RoleGroup {
   id: string;
@@ -23,6 +24,8 @@ interface Role {
     users?: { create: boolean; read: boolean | { enabled: boolean; readableFields: string[] }; update: boolean; delete: boolean };
     userApproval?: { approve: boolean; reject: boolean };
     meetings?: { create: boolean; read: boolean; update: boolean; delete: boolean };
+    documents?: { create: boolean; read: boolean; update: boolean; delete: boolean };
+    polls?: { create: boolean; read: boolean; update: boolean; delete: boolean };
     events?: { create: boolean; read: boolean; update: boolean; delete: boolean };
     assignments?: { create: boolean; read: boolean; update: boolean; delete: boolean };
     routes?: { create: boolean; read: boolean; update: boolean; delete: boolean };
@@ -31,6 +34,7 @@ interface Role {
     activityLogs?: { read: boolean };
     researches?: { create: boolean; read: boolean; update: boolean; delete: boolean };
     messages?: { create: boolean; read: boolean; update: boolean; delete: boolean };
+    citizenDatabase?: { read: boolean };
   };
   createdAt: string;
   updatedAt: string;
@@ -40,6 +44,8 @@ interface FormPermissions {
   users: { create: boolean; update: boolean; delete: boolean };
   userApproval: { approve: boolean; reject: boolean };
   meetings: { create: boolean; read: boolean; update: boolean; delete: boolean };
+  documents: { create: boolean; read: boolean; update: boolean; delete: boolean };
+  polls: { create: boolean; read: boolean; update: boolean; delete: boolean };
   events: { create: boolean; read: boolean; update: boolean; delete: boolean };
   assignments: { create: boolean; read: boolean; update: boolean; delete: boolean };
   routes: { create: boolean; read: boolean; update: boolean; delete: boolean };
@@ -48,6 +54,7 @@ interface FormPermissions {
   activityLogs: { read: boolean };
   researches: { create: boolean; read: boolean; update: boolean; delete: boolean };
   messages: { create: boolean; read: boolean; update: boolean; delete: boolean };
+  citizenDatabase: { read: boolean };
 }
 
 interface User {
@@ -103,6 +110,8 @@ export default function YetkilendirmePage() {
       users: { create: false, update: false, delete: false }, // read kaldırıldı
       userApproval: { approve: false, reject: false },
       meetings: { create: false, read: false, update: false, delete: false },
+      documents: { create: false, read: false, update: false, delete: false },
+      polls: { create: false, read: false, update: false, delete: false },
       events: { create: false, read: false, update: false, delete: false },
       assignments: { create: false, read: false, update: false, delete: false },
       routes: { create: false, read: false, update: false, delete: false },
@@ -111,6 +120,7 @@ export default function YetkilendirmePage() {
       activityLogs: { read: false },
       researches: { create: false, read: false, update: false, delete: false },
       messages: { create: false, read: false, update: false, delete: false },
+      citizenDatabase: { read: false },
     },
     // Üyeler için okunabilir alanlar
     usersReadableFields: [] as string[],
@@ -271,6 +281,7 @@ export default function YetkilendirmePage() {
         activityLogs: { read: false },
         researches: { create: false, read: false, update: false, delete: false },
         messages: { create: false, read: false, update: false, delete: false },
+        citizenDatabase: { read: false },
       },
       usersReadableFields: [],
     });
@@ -301,6 +312,8 @@ export default function YetkilendirmePage() {
       },
       userApproval: (role.permissions as any).userApproval || { approve: false, reject: false },
       meetings: role.permissions.meetings || { create: false, read: false, update: false, delete: false },
+      documents: (role.permissions as any).documents || { create: false, read: false, update: false, delete: false },
+      polls: (role.permissions as any).polls || { create: false, read: false, update: false, delete: false },
       events: role.permissions.events || { create: false, read: false, update: false, delete: false },
       assignments: role.permissions.assignments || { create: false, read: false, update: false, delete: false },
       routes: role.permissions.routes || { create: false, read: false, update: false, delete: false },
@@ -309,6 +322,7 @@ export default function YetkilendirmePage() {
       activityLogs: (role.permissions as any).activityLogs || { read: false },
       researches: (role.permissions as any).researches || { create: false, read: false, update: false, delete: false },
       messages: (role.permissions as any).messages || { create: false, read: false, update: false, delete: false },
+      citizenDatabase: (role.permissions as any).citizenDatabase || { read: false },
     };
     
     setFormData({
@@ -376,6 +390,8 @@ export default function YetkilendirmePage() {
           users: { create: false, update: false, delete: false },
           userApproval: { approve: false, reject: false },
           meetings: { create: false, read: false, update: false, delete: false },
+          documents: { create: false, read: false, update: false, delete: false },
+          polls: { create: false, read: false, update: false, delete: false },
           events: { create: false, read: false, update: false, delete: false },
           assignments: { create: false, read: false, update: false, delete: false },
           routes: { create: false, read: false, update: false, delete: false },
@@ -384,6 +400,7 @@ export default function YetkilendirmePage() {
           activityLogs: { read: false },
           researches: { create: false, read: false, update: false, delete: false },
           messages: { create: false, read: false, update: false, delete: false },
+          citizenDatabase: { read: false },
         },
         usersReadableFields: [],
       });
@@ -518,6 +535,17 @@ export default function YetkilendirmePage() {
           },
         },
       });
+    } else if (resource === 'citizenDatabase') {
+      // citizenDatabase için özel: sadece read
+      setFormData({
+        ...formData,
+        permissions: {
+          ...formData.permissions,
+          citizenDatabase: {
+            read: true,
+          },
+        },
+      });
     } else if (resource === 'messages') {
       // messages için normal CRUD
       setFormData({
@@ -600,6 +628,17 @@ export default function YetkilendirmePage() {
           },
         },
       });
+    } else if (resource === 'citizenDatabase') {
+      // citizenDatabase için özel: sadece read
+      setFormData({
+        ...formData,
+        permissions: {
+          ...formData.permissions,
+          citizenDatabase: {
+            read: false,
+          },
+        },
+      });
     } else if (resource === 'messages') {
       // messages için normal CRUD
       setFormData({
@@ -634,6 +673,8 @@ export default function YetkilendirmePage() {
     users: 'Üyeler',
     userApproval: 'Üye Onayı',
     meetings: 'Toplantı Kayıtları',
+    documents: 'Belgeler',
+    polls: 'Oylamalar',
     events: 'Etkinlikler',
     assignments: 'Görevlendirmeler',
     routes: 'Rotalar',
@@ -642,6 +683,7 @@ export default function YetkilendirmePage() {
     activityLogs: 'İşlem Kayıtları',
     researches: 'Araştırmalar',
     messages: 'Sohbet',
+    citizenDatabase: 'Vatandaş Veritabanı',
   };
 
   const actionLabels: Record<string, string> = {
@@ -691,6 +733,11 @@ export default function YetkilendirmePage() {
         if (!perms || !perms.create || !perms.read || !perms.update || !perms.delete) {
           return false;
         }
+      } else if (resource === 'citizenDatabase') {
+        // citizenDatabase için özel kontrol (sadece read)
+        if (!perms || !perms.read) {
+          return false;
+        }
       } else {
         // Diğer kaynaklar için normal kontrol
         if (!perms || !perms.create || !perms.read || !perms.update || !perms.delete) {
@@ -717,16 +764,13 @@ export default function YetkilendirmePage() {
   const canDelete = hasPermission(userPermissions, 'roles', 'delete');
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
+    <div className="space-y-6 relative z-10">
+      <div className="flex justify-between items-center relative z-10">
         <h1 className="text-3xl font-bold text-white">Yetkilendirme</h1>
         {canCreate && (
-          <button
-            onClick={handleAddRole}
-            className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30"
-          >
+          <Button onClick={handleAddRole} variant="primary" className="relative z-10">
             Rütbe Ekle
-          </button>
+          </Button>
         )}
       </div>
 
@@ -746,11 +790,12 @@ export default function YetkilendirmePage() {
               Üye Seç:
             </label>
             <div className="flex-1 relative system-admin-dropdown-container">
-              <button
+              <Button
                 type="button"
                 onClick={() => setShowSystemAdminDropdown(!showSystemAdminDropdown)}
                 disabled={users.length === 0}
-                className="w-full text-left px-3 py-2 text-sm bg-background-tertiary border border-gray-600 rounded-md text-gray-300 hover:bg-gray-700 transition-all flex items-center justify-between disabled:opacity-50 disabled:cursor-not-allowed"
+                variant="secondary"
+                className="w-full text-left justify-between"
               >
                 <span>
                   {selectedSystemAdminId
@@ -765,24 +810,26 @@ export default function YetkilendirmePage() {
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
-              </button>
+              </Button>
               
               {showSystemAdminDropdown && users.length > 0 && (
                 <div className="absolute z-50 mt-1 w-full bg-background border border-gray-700 rounded-md shadow-lg max-h-64 overflow-y-auto backdrop-blur-sm">
                   <div className="p-2 space-y-1">
                     {users.map((user) => (
-                      <button
+                      <Button
                         key={user.id}
                         type="button"
+                        variant="ghost"
+                        size="sm"
                         onClick={() => {
                           setSelectedSystemAdminId(user.id);
                           setIsSystemAdminActive(user.isSystemAdmin);
                           setShowSystemAdminDropdown(false);
                         }}
-                        className={`w-full text-left px-3 py-2 text-sm rounded hover:bg-background-tertiary transition-all ${
+                        className={`w-full text-left ${
                           selectedSystemAdminId === user.id
                             ? 'bg-primary/20 text-primary border border-primary/30'
-                            : 'text-gray-300'
+                            : ''
                         }`}
                       >
                         <div className="flex items-center justify-between">
@@ -793,7 +840,7 @@ export default function YetkilendirmePage() {
                             </span>
                           )}
                         </div>
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 </div>
@@ -838,10 +885,10 @@ export default function YetkilendirmePage() {
           )}
 
           <div className="flex justify-end pt-2">
-            <button
+            <Button
               onClick={handleAssignSystemAdmin}
               disabled={isAssigningSystemAdmin || !selectedSystemAdminId}
-              className="px-6 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 font-medium"
+              variant="primary"
             >
               {isAssigningSystemAdmin ? (
                 <span className="flex items-center gap-2">
@@ -854,7 +901,7 @@ export default function YetkilendirmePage() {
               ) : (
                 'Sistem Yetkilisini Ata'
               )}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -960,21 +1007,23 @@ export default function YetkilendirmePage() {
                           </div>
                           <div className="flex gap-2 ml-4">
                             {canUpdate && (
-                              <button
+                              <Button
                                 onClick={() => handleEditRole(role)}
-                                className="p-2 bg-background-tertiary text-white rounded-md hover:bg-gray-700 transition-all"
+                                variant="secondary"
+                                size="icon"
                                 title="Düzenle"
                               >
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                                 </svg>
-                              </button>
+                              </Button>
                             )}
                             {canDelete && (
-                              <button
+                              <Button
                                 onClick={() => handleDeleteRole(role.id, role.name)}
                                 disabled={deletingRoleId === role.id}
-                                className="p-2 bg-background-tertiary text-white rounded-md hover:bg-gray-700 transition-all disabled:opacity-50"
+                                variant="secondary"
+                                size="icon"
                                 title="Sil"
                               >
                                 {deletingRoleId === role.id ? (
@@ -987,7 +1036,7 @@ export default function YetkilendirmePage() {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                   </svg>
                                 )}
-                              </button>
+                              </Button>
                             )}
                           </div>
                         </div>
@@ -1061,19 +1110,21 @@ export default function YetkilendirmePage() {
                         </div>
                       </div>
                       <div className="flex gap-2 ml-4">
-                        <button
+                        <Button
                           onClick={() => handleEditRole(role)}
-                          className="p-2 bg-background-tertiary text-white rounded-md hover:bg-gray-700 transition-all"
+                          variant="secondary"
+                          size="icon"
                           title="Düzenle"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           onClick={() => handleDeleteRole(role.id, role.name)}
                           disabled={deletingRoleId === role.id}
-                          className="p-2 bg-background-tertiary text-white rounded-md hover:bg-gray-700 transition-all disabled:opacity-50"
+                          variant="secondary"
+                          size="icon"
                           title="Sil"
                         >
                           {deletingRoleId === role.id ? (
@@ -1086,7 +1137,7 @@ export default function YetkilendirmePage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
                           )}
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   </div>
@@ -1098,322 +1149,300 @@ export default function YetkilendirmePage() {
       )}
 
       {/* Rütbe Ekle/Düzenle Modal */}
-      {(showAddModal || showEditModal) && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          onClick={() => {
-            setShowAddModal(false);
-            setShowEditModal(false);
-            setEditingRole(null);
-            setError('');
-            setFormData({
-              name: '',
-              description: '',
-              groupId: '',
-              permissions: {
-                users: { create: false, update: false, delete: false },
-                userApproval: { approve: false, reject: false },
-                meetings: { create: false, read: false, update: false, delete: false },
-                events: { create: false, read: false, update: false, delete: false },
-                assignments: { create: false, read: false, update: false, delete: false },
-                routes: { create: false, read: false, update: false, delete: false },
-                roles: { create: false, read: false, update: false, delete: false },
-                announcements: { create: false, read: false, update: false, delete: false },
-                activityLogs: { read: false },
-                researches: { create: false, read: false, update: false, delete: false },
-                messages: { create: false, read: false, update: false, delete: false },
-              },
-              usersReadableFields: [],
-            });
-            setShowUsersFieldsDropdown(false);
-          }}
-        >
-          <div
-            className="bg-background-secondary rounded-md border border-gray-700 max-w-4xl w-full max-h-[90vh] overflow-y-auto backdrop-blur-sm shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-semibold text-white">
-                  {editingRole ? 'Rütbe Düzenle' : 'Yeni Rütbe Ekle'}
-                </h2>
-                <button
-                  onClick={() => {
-                    setShowAddModal(false);
-                    setShowEditModal(false);
-                    setEditingRole(null);
-                    setError('');
-                    setFormData({
-                      name: '',
-                      description: '',
-                      groupId: '',
-                      permissions: {
-                        users: { create: false, update: false, delete: false },
-                        userApproval: { approve: false, reject: false },
-                        meetings: { create: false, read: false, update: false, delete: false },
-                        events: { create: false, read: false, update: false, delete: false },
-                        assignments: { create: false, read: false, update: false, delete: false },
-                        routes: { create: false, read: false, update: false, delete: false },
-                        roles: { create: false, read: false, update: false, delete: false },
-                        announcements: { create: false, read: false, update: false, delete: false },
-                        activityLogs: { read: false },
-                        researches: { create: false, read: false, update: false, delete: false },
-                        messages: { create: false, read: false, update: false, delete: false },
-                      },
-                      usersReadableFields: [],
-                    });
-                    setShowUsersFieldsDropdown(false);
-                  }}
-                  className="text-gray-400 hover:text-white transition-all text-2xl font-bold"
-                >
-                  ×
-                </button>
-              </div>
-
-              {error && (
-                <div className="bg-red-900/20 border border-red-500/50 p-3 rounded-md mb-4 backdrop-blur-sm">
-                  <p className="text-red-400 text-sm">{error}</p>
-                </div>
-              )}
-
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Rütbe Adı <span className="text-red-400">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
-                    placeholder="Örn: PRESIDENT, MEMBER"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Açıklama
-                  </label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                    rows={3}
-                    className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
-                    placeholder="Rütbe hakkında açıklama..."
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Grup
-                  </label>
-                  <select
-                    value={formData.groupId}
-                    onChange={(e) => setFormData({ ...formData, groupId: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
-                  >
-                    <option value="">Grup seçin...</option>
-                    {roleGroups.map((group) => (
-                      <option key={group.id} value={group.id}>
-                        {group.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-4">
-                    Yetkiler
-                  </label>
-                  <div className="space-y-4">
-                    {Object.entries(formData.permissions).map(([resource, perms]: [string, any]) => {
-                      const allSelected = Object.values(perms).every(v => v === true);
-                      const noneSelected = Object.values(perms).every(v => v === false);
-                      
-                      return (
-                        <div key={resource} className="bg-background rounded-md p-4 border border-gray-700">
-                          <div className="flex justify-between items-center mb-3">
-                            <h3 className="text-white font-medium">
-                              {resourceLabels[resource] || resource}
-                            </h3>
-                            <div className="flex gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handleSelectAll(resource)}
-                                className="px-3 py-1 text-xs bg-primary/20 text-primary border border-primary/30 rounded-md hover:bg-primary/30 transition-all"
-                              >
-                                Tümünü Seç
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDeselectAll(resource)}
-                                className="px-3 py-1 text-xs bg-background-tertiary text-gray-300 border border-gray-600 rounded-md hover:bg-gray-700 transition-all"
-                              >
-                                Tümünü Kaldır
-                              </button>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                            {/* Üyeler için özel işleme: read checkbox'ı yok, sadece dropdown */}
-                            {resource === 'users' ? (
-                              <>
-                                {Object.entries(perms).map(([action, value]: [string, any]) => (
-                                  <label
-                                    key={action}
-                                    className="flex items-center gap-2 cursor-pointer"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={value}
-                                      onChange={(e) =>
-                                        handlePermissionChange(resource, action, e.target.checked)
-                                      }
-                                      className="w-4 h-4 text-primary bg-background border-gray-600 rounded focus:ring-primary focus:ring-2"
-                                    />
-                                    <span className="text-sm text-gray-300">
-                                      {actionLabels[action] || action}
-                                    </span>
-                                  </label>
-                                ))}
-                                {/* Görüntüle dropdown'u */}
-                                <div className="col-span-2 md:col-span-4 space-y-2">
-                                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                                    Görüntüle
-                                  </label>
-                                  <div className="relative z-50 user-fields-dropdown-container">
-                                    <button
-                                      type="button"
-                                      onClick={() => setShowUsersFieldsDropdown(!showUsersFieldsDropdown)}
-                                      className="w-full text-left px-3 py-2 text-sm bg-background-tertiary border border-gray-600 rounded-md text-gray-300 hover:bg-gray-700 transition-all flex items-center justify-between"
-                                    >
-                                      <span>
-                                        {formData.usersReadableFields.length > 0
-                                          ? `${formData.usersReadableFields.length} alan seçildi`
-                                          : 'Görüntülenebilir alan seçin...'}
-                                      </span>
-                                      <svg
-                                        className={`w-4 h-4 transition-transform ${showUsersFieldsDropdown ? 'rotate-180' : ''}`}
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                      >
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                      </svg>
-                                    </button>
-                                    {showUsersFieldsDropdown && (
-                                      <div className="absolute z-[100] mt-1 w-full bg-background border border-gray-700 rounded-md shadow-lg max-h-64 overflow-y-auto backdrop-blur-sm">
-                                        <div className="p-2 border-b border-gray-700 flex gap-2">
-                                          <button
-                                            type="button"
-                                            onClick={handleSelectAllUserFields}
-                                            className="px-2 py-1 text-xs bg-primary/20 text-primary border border-primary/30 rounded hover:bg-primary/30 transition-all"
-                                          >
-                                            Tümünü Seç
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={handleDeselectAllUserFields}
-                                            className="px-2 py-1 text-xs bg-background-tertiary text-gray-300 border border-gray-600 rounded hover:bg-gray-700 transition-all"
-                                          >
-                                            Tümünü Kaldır
-                                          </button>
-                                        </div>
-                                        <div className="p-2 space-y-1">
-                                          {userFields.map((field) => (
-                                            <label
-                                              key={field.key}
-                                              className="flex items-center gap-2 p-2 hover:bg-background-tertiary rounded cursor-pointer"
-                                            >
-                                              <input
-                                                type="checkbox"
-                                                checked={formData.usersReadableFields.includes(field.key)}
-                                                onChange={() => handleUserFieldToggle(field.key)}
-                                                className="w-4 h-4 text-primary bg-background border-gray-600 rounded focus:ring-primary focus:ring-2"
-                                              />
-                                              <span className="text-sm text-gray-300">{field.label}</span>
-                                            </label>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </>
-                            ) : (
-                              // Diğer kaynaklar için normal checkbox'lar
-                              Object.entries(perms).map(([action, value]: [string, any]) => (
-                                <label
-                                  key={action}
-                                  className="flex items-center gap-2 cursor-pointer"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={value}
-                                    onChange={(e) =>
-                                      handlePermissionChange(resource, action, e.target.checked)
-                                    }
-                                    className="w-4 h-4 text-primary bg-background border-gray-600 rounded focus:ring-primary focus:ring-2"
-                                  />
-                                  <span className="text-sm text-gray-300">
-                                    {actionLabels[action] || action}
-                                  </span>
-                                </label>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowAddModal(false);
-                      setShowEditModal(false);
-                      setEditingRole(null);
-                      setError('');
-                      setFormData({
-                        name: '',
-                        description: '',
-                        groupId: '',
-                        permissions: {
-                          users: { create: false, update: false, delete: false },
-                          userApproval: { approve: false, reject: false },
-                          meetings: { create: false, read: false, update: false, delete: false },
-                          events: { create: false, read: false, update: false, delete: false },
-                          assignments: { create: false, read: false, update: false, delete: false },
-                          routes: { create: false, read: false, update: false, delete: false },
-                          roles: { create: false, read: false, update: false, delete: false },
-                          announcements: { create: false, read: false, update: false, delete: false },
-                          activityLogs: { read: false },
-                          researches: { create: false, read: false, update: false, delete: false },
-                          messages: { create: false, read: false, update: false, delete: false },
-                        },
-                        usersReadableFields: [],
-                      });
-                      setShowUsersFieldsDropdown(false);
-                    }}
-                    className="px-4 py-2 bg-background-tertiary text-white rounded-md hover:bg-gray-700 transition-all"
-                  >
-                    İptal
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-all disabled:opacity-50 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30"
-                  >
-                    {isSubmitting ? 'Kaydediliyor...' : editingRole ? 'Güncelle' : 'Oluştur'}
-                  </button>
-                </div>
-              </form>
-            </div>
+      <Dialog open={showAddModal || showEditModal} onOpenChange={(open) => {
+        if (!open) {
+          setShowAddModal(false);
+          setShowEditModal(false);
+          setEditingRole(null);
+          setError('');
+          setFormData({
+            name: '',
+            description: '',
+            groupId: '',
+            permissions: {
+              users: { create: false, update: false, delete: false },
+              userApproval: { approve: false, reject: false },
+              meetings: { create: false, read: false, update: false, delete: false },
+                  documents: { create: false, read: false, update: false, delete: false },
+                  polls: { create: false, read: false, update: false, delete: false },
+              events: { create: false, read: false, update: false, delete: false },
+              assignments: { create: false, read: false, update: false, delete: false },
+              routes: { create: false, read: false, update: false, delete: false },
+              roles: { create: false, read: false, update: false, delete: false },
+              announcements: { create: false, read: false, update: false, delete: false },
+              activityLogs: { read: false },
+              researches: { create: false, read: false, update: false, delete: false },
+              messages: { create: false, read: false, update: false, delete: false },
+              citizenDatabase: { read: false },
+            },
+            usersReadableFields: [],
+          });
+          setShowUsersFieldsDropdown(false);
+        }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <div className="flex justify-between items-center mb-4">
+            <DialogTitle>
+              {editingRole ? 'Rütbe Düzenle' : 'Yeni Rütbe Ekle'}
+            </DialogTitle>
+            <DialogClose asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-gray-400 hover:text-white text-2xl font-bold"
+              >
+                ×
+              </Button>
+            </DialogClose>
           </div>
-        </div>
-      )}
+
+          {error && (
+            <div className="bg-red-900/20 border border-red-500/50 p-3 rounded-md mb-4 backdrop-blur-sm">
+              <p className="text-red-400 text-sm">{error}</p>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Rütbe Adı <span className="text-red-400">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
+                placeholder="Örn: PRESIDENT, MEMBER"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Açıklama
+              </label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
+                placeholder="Rütbe hakkında açıklama..."
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Grup
+              </label>
+              <select
+                value={formData.groupId}
+                onChange={(e) => setFormData({ ...formData, groupId: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 transition-all"
+              >
+                <option value="">Grup seçin...</option>
+                {roleGroups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-4">
+                Yetkiler
+              </label>
+              <div className="space-y-4">
+                {Object.entries(formData.permissions).map(([resource, perms]: [string, any]) => {
+                  const allSelected = Object.values(perms).every(v => v === true);
+                  const noneSelected = Object.values(perms).every(v => v === false);
+                  
+                  return (
+                    <div key={resource} className="bg-background rounded-md p-4 border border-gray-700">
+                      <div className="flex justify-between items-center mb-3">
+                        <h3 className="text-white font-medium">
+                          {resourceLabels[resource] || resource}
+                        </h3>
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            onClick={() => handleSelectAll(resource)}
+                            variant="ghost"
+                            size="sm"
+                            className="px-3 py-1 text-xs bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30"
+                          >
+                            Tümünü Seç
+                          </Button>
+                          <Button
+                            type="button"
+                            onClick={() => handleDeselectAll(resource)}
+                            variant="secondary"
+                            size="sm"
+                            className="px-3 py-1 text-xs"
+                          >
+                            Tümünü Kaldır
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {/* Üyeler için özel işleme: read checkbox'ı yok, sadece dropdown */}
+                        {resource === 'users' ? (
+                          <>
+                            {Object.entries(perms).map(([action, value]: [string, any]) => (
+                              <div key={action} className="flex items-center gap-2">
+                                <Checkbox
+                                  checked={value}
+                                  onCheckedChange={(checked) =>
+                                    handlePermissionChange(resource, action, checked as boolean)
+                                  }
+                                />
+                                <Label className="text-sm text-gray-300 cursor-pointer">
+                                  {actionLabels[action] || action}
+                                </Label>
+                              </div>
+                            ))}
+                            {/* Görüntüle dropdown'u */}
+                            <div className="col-span-2 md:col-span-4 space-y-2">
+                              <label className="block text-sm font-medium text-gray-300 mb-2">
+                                Görüntüle
+                              </label>
+                              <div className="relative z-50 user-fields-dropdown-container">
+                                <Button
+                                  type="button"
+                                  onClick={() => setShowUsersFieldsDropdown(!showUsersFieldsDropdown)}
+                                  variant="secondary"
+                                  className="w-full text-left justify-between"
+                                >
+                                  <span>
+                                    {formData.usersReadableFields.length > 0
+                                      ? `${formData.usersReadableFields.length} alan seçildi`
+                                      : 'Görüntülenebilir alan seçin...'}
+                                  </span>
+                                  <svg
+                                    className={`w-4 h-4 transition-transform ${showUsersFieldsDropdown ? 'rotate-180' : ''}`}
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                  </svg>
+                                </Button>
+                                {showUsersFieldsDropdown && (
+                                  <div className="absolute z-[100] mt-1 w-full bg-background border border-gray-700 rounded-md shadow-lg max-h-64 overflow-y-auto backdrop-blur-sm">
+                                    <div className="p-2 border-b border-gray-700 flex gap-2">
+                                      <Button
+                                        type="button"
+                                        onClick={handleSelectAllUserFields}
+                                        variant="ghost"
+                                        size="sm"
+                                        className="px-2 py-1 text-xs bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30"
+                                      >
+                                        Tümünü Seç
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        onClick={handleDeselectAllUserFields}
+                                        variant="secondary"
+                                        size="sm"
+                                        className="px-2 py-1 text-xs"
+                                      >
+                                        Tümünü Kaldır
+                                      </Button>
+                                    </div>
+                                    <div className="p-2 space-y-1">
+                                      {userFields.map((field) => (
+                                        <label
+                                          key={field.key}
+                                          className="flex items-center gap-2 p-2 hover:bg-background-tertiary rounded cursor-pointer"
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={formData.usersReadableFields.includes(field.key)}
+                                            onChange={() => handleUserFieldToggle(field.key)}
+                                            className="w-4 h-4 text-primary bg-background border-gray-600 rounded focus:ring-primary focus:ring-2"
+                                          />
+                                          <span className="text-sm text-gray-300">{field.label}</span>
+                                        </label>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          // Diğer kaynaklar için normal checkbox'lar
+                          Object.entries(perms).map(([action, value]: [string, any]) => (
+                            <label
+                              key={action}
+                              className="flex items-center gap-2 cursor-pointer"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={value}
+                                onChange={(e) =>
+                                  handlePermissionChange(resource, action, e.target.checked)
+                                }
+                                className="w-4 h-4 text-primary bg-background border-gray-600 rounded focus:ring-primary focus:ring-2"
+                              />
+                              <span className="text-sm text-gray-300">
+                                {actionLabels[action] || action}
+                              </span>
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4">
+              <Button
+                type="button"
+                onClick={() => {
+                  setShowAddModal(false);
+                  setShowEditModal(false);
+                  setEditingRole(null);
+                  setError('');
+                  setFormData({
+                    name: '',
+                    description: '',
+                    groupId: '',
+                    permissions: {
+                      users: { create: false, update: false, delete: false },
+                      userApproval: { approve: false, reject: false },
+                      meetings: { create: false, read: false, update: false, delete: false },
+                      events: { create: false, read: false, update: false, delete: false },
+                      assignments: { create: false, read: false, update: false, delete: false },
+                      routes: { create: false, read: false, update: false, delete: false },
+                      roles: { create: false, read: false, update: false, delete: false },
+                      announcements: { create: false, read: false, update: false, delete: false },
+                      activityLogs: { read: false },
+                      researches: { create: false, read: false, update: false, delete: false },
+                      messages: { create: false, read: false, update: false, delete: false },
+                      citizenDatabase: { read: false },
+                    },
+                    usersReadableFields: [],
+                  });
+                  setShowUsersFieldsDropdown(false);
+                }}
+                variant="secondary"
+              >
+                İptal
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                variant="primary"
+              >
+                {isSubmitting ? 'Kaydediliyor...' : editingRole ? 'Güncelle' : 'Oluştur'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

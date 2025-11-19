@@ -6,6 +6,9 @@ import { useSession } from 'next-auth/react';
 import { redirect } from 'next/navigation';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { hasPermission } from '@/lib/auth';
+import { useSocket } from '@/hooks/useSocket';
+import { VideoCall } from '@/components/VideoCall';
+import { AudioCall } from '@/components/AudioCall';
 
 // WhatsApp-style Voice Message Player Component
 interface VoiceMessagePlayerProps {
@@ -271,18 +274,32 @@ interface RoleGroup {
 
 interface Message {
   id: string;
-  type: 'text' | 'image' | 'video' | 'audio' | 'location' | 'live_location';
+  type: 'text' | 'image' | 'video' | 'audio' | 'location' | 'live_location' | 'document' | 'file';
   content: string | null;
   mediaPath: string | null;
   mediaUrl: string | null;
+  fileName: string | null;
+  fileSize: number | null;
+  fileType: string | null;
   latitude: number | null;
   longitude: number | null;
   locationName: string | null;
   liveLocationExpiresAt: string | null;
   repliedToId: string | null;
+  forwardedFromId: string | null;
   senderId: string;
   groupId: string | null;
+  recipientId: string | null;
+  pinned: boolean;
+  pinnedAt: string | null;
+  pinnedBy: string | null;
+  editedAt: string | null;
+  expiresAt: string | null;
+  selfDestruct: boolean;
+  selfDestructSeconds: number | null;
   createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
   sender: {
     id: string;
     username: string;
@@ -306,6 +323,46 @@ interface Message {
       username: string;
     };
   } | null;
+  forwardedFrom: {
+    id: string;
+    type: string;
+    content: string | null;
+    sender: {
+      rutbe: string | null;
+      isim: string | null;
+      soyisim: string | null;
+      username: string;
+    };
+  } | null;
+  reactions?: Array<{
+    id: string;
+    emoji: string;
+    userId: string;
+    user: {
+      id: string;
+      username: string;
+      isim: string | null;
+      soyisim: string | null;
+      rutbe: string | null;
+    };
+  }>;
+  readReceipts?: Array<{
+    id: string;
+    userId: string;
+    readAt: string;
+    user: {
+      id: string;
+      username: string;
+      isim: string | null;
+      soyisim: string | null;
+      rutbe: string | null;
+    };
+  }>;
+  starredBy?: Array<{
+    id: string;
+    userId: string;
+  }>;
+  isStarred?: boolean; // Kullanıcının yıldızladı mı?
 }
 
 interface User {
@@ -341,6 +398,46 @@ export default function SohbetPage() {
   const [recordingCurrentY, setRecordingCurrentY] = useState(0);
   const [recordingStartTime, setRecordingStartTime] = useState<number>(0);
   const [recordingDuration, setRecordingDuration] = useState<number>(0);
+  
+  // Yeni özellikler için state'ler
+  const [selectedMessages, setSelectedMessages] = useState<Set<string>>(new Set());
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
+  const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
+  const [showPinnedMessages, setShowPinnedMessages] = useState(false);
+  const [pinnedMessages, setPinnedMessages] = useState<Message[]>([]);
+  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [typingTimeout, setTypingTimeout] = useState<NodeJS.Timeout | null>(null);
+  
+  // Yeni özellikler için state'ler
+  const [selfDestructEnabled, setSelfDestructEnabled] = useState(false);
+  const [selfDestructSeconds, setSelfDestructSeconds] = useState<number | null>(null);
+  const [showPrivateMessageDialog, setShowPrivateMessageDialog] = useState(false);
+  const [selectedRecipient, setSelectedRecipient] = useState<User | null>(null);
+  const [showMediaViewer, setShowMediaViewer] = useState(false);
+  const [selectedMedia, setSelectedMedia] = useState<{ url: string; type: string; fileName?: string } | null>(null);
+  const [mediaGallery, setMediaGallery] = useState<Array<{ id: string; url: string; type: string; thumbnail?: string }>>([]);
+  const [showCallDialog, setShowCallDialog] = useState(false);
+  const [callType, setCallType] = useState<'audio' | 'video' | null>(null);
+  const [isInCall, setIsInCall] = useState(false);
+  const [activeCall, setActiveCall] = useState<{
+    id: string;
+    callerId: string;
+    receiverId: string;
+    type: 'audio' | 'video';
+    isCaller: boolean;
+  } | null>(null);
+  const [incomingCall, setIncomingCall] = useState<{
+    callerId: string;
+    type: 'audio' | 'video';
+    groupId?: string;
+    callId?: string;
+  } | null>(null);
+
+  // Socket.IO connection
+  const { socket, isConnected: isSocketConnected } = useSocket();
   
   // Mention states
   const [users, setUsers] = useState<User[]>([]);
@@ -558,38 +655,317 @@ export default function SohbetPage() {
     }
   };
 
+  // Kullanıcı alt tarafta mı? (scroll davranışı için ref ile takip)
+  const shouldAutoScrollRef = useRef(true);
+  // Kullanıcı yukarıdaysa yeni mesaj sayacı ve ok butonu görünürlüğü
+  const [unreadWhileScrolledUp, setUnreadWhileScrolledUp] = useState(0);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const prevMessagesLengthRef = useRef(0);
+
   // Kullanıcının en altta olup olmadığını kontrol et (flex-col-reverse için)
   const isUserAtBottom = () => {
     const messagesContainer = document.getElementById('messages-container');
     if (!messagesContainer) return true;
     
-    const threshold = 150; // 150px tolerans
+    const threshold = 5; // küçük tolerans: en ufak yukarı kaydırmada bile altta değil say
     // Flex-col-reverse'de en alta = scrollTop = 0
     return messagesContainer.scrollTop <= threshold;
   };
 
   useEffect(() => {
     // Sadece kullanıcı en alttayken otomatik scroll yap
-    if (isUserAtBottom()) {
+    if (shouldAutoScrollRef.current && isUserAtBottom()) {
       scrollToBottom();
     }
+
+    // Yeni mesajlar geldiğinde ve kullanıcı altta değilse sayaç artır
+    const prevLen = prevMessagesLengthRef.current;
+    const currLen = messages.length;
+    if (currLen > prevLen) {
+      if (!isUserAtBottom()) {
+        setUnreadWhileScrolledUp((prev) => prev + (currLen - prevLen));
+        setShowScrollToBottom(true);
+      } else {
+        // Alttaysak sayacı sıfırla ve butonu gizle
+        setUnreadWhileScrolledUp(0);
+        setShowScrollToBottom(false);
+      }
+    }
+    prevMessagesLengthRef.current = currLen;
   }, [messages]);
 
-  // İlk yüklemede veya tab değiştiğinde en alta scroll yap
+  // İlk yükleme veya sekme değişiminde sadece kullanıcı alttaysa otomatik scroll yap
   useEffect(() => {
-    if (!isLoading && messages.length > 0) {
+    if (!isLoading && messages.length > 0 && shouldAutoScrollRef.current) {
       // İlk yükleme için kısa bir gecikme ile scroll yap (DOM'un render olması için)
-      setTimeout(() => {
-        scrollToBottom();
+      const t = setTimeout(() => {
+        if (shouldAutoScrollRef.current && isUserAtBottom()) {
+          scrollToBottom();
+        }
       }, 100);
+      return () => clearTimeout(t);
     }
-  }, [isLoading, selectedTab]);
+  }, [isLoading, selectedTab, messages]);
+
+  // Mount/sekme değişiminde mevcut scroll konumuna göre ok görünürlüğünü ayarla
+  useEffect(() => {
+    const container = document.getElementById('messages-container');
+    if (!container) return;
+    const threshold = 5;
+    const atBottom = container.scrollTop <= threshold;
+    setShowScrollToBottom(!atBottom);
+    if (atBottom) setUnreadWhileScrolledUp(0);
+  }, [selectedTab]);
+
+  // Socket.IO event listeners for calls
+  useEffect(() => {
+    if (!socket) return;
+
+    // Handle incoming call
+    socket.on('call:incoming', (data: { callerId: string; type: 'audio' | 'video'; groupId?: string; callId?: string }) => {
+      console.log('Incoming call received:', data);
+      // Eğer zaten bir active call varsa, yeni call'u reddet
+      if (activeCall || isInCall) {
+        console.log('Already in a call, rejecting incoming call');
+        socket.emit('call:reject', { callerId: data.callerId });
+        return;
+      }
+      setIncomingCall(data);
+    });
+
+    // Handle call accepted (caller receives this when receiver accepts)
+    socket.on('call:accepted', (data: { callId: string; receiverId: string }) => {
+      console.log('Call accepted:', data);
+      if (activeCall && activeCall.id === data.callId) {
+        // Call is now active, update UI if needed
+        // The call is already set as active, so just ensure it's in the right state
+        setIsInCall(true);
+      }
+    });
+
+    // Handle call rejected
+    socket.on('call:rejected', () => {
+      console.log('Call rejected');
+      if (activeCall) {
+        setActiveCall(null);
+        setIsInCall(false);
+        alert('Çağrı reddedildi');
+      }
+    });
+
+    // Handle call ended
+    socket.on('call:ended', () => {
+      console.log('Call ended');
+      if (activeCall) {
+        setActiveCall(null);
+        setIsInCall(false);
+      }
+      setIncomingCall(null);
+    });
+
+    return () => {
+      socket.off('call:incoming');
+      socket.off('call:accepted');
+      socket.off('call:rejected');
+      socket.off('call:ended');
+    };
+  }, [socket, activeCall]);
+
+  // Start call function
+  const startCall = async (receiverId: string, type: 'audio' | 'video') => {
+    if (!socket || !session?.user?.id) return;
+
+    try {
+      // Create call in database
+      const res = await fetch('/api/calls', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          receiverId,
+          type,
+        }),
+        credentials: 'include',
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to create call');
+      }
+
+      const call = await res.json();
+
+      // Initiate call via socket with call ID
+      socket.emit('call:initiate', {
+        receiverId,
+        type,
+        callId: call.id,
+      });
+
+      // Set active call (caller side - connecting state)
+      setActiveCall({
+        id: call.id,
+        callerId: session.user.id,
+        receiverId,
+        type,
+        isCaller: true,
+      });
+
+      setIsInCall(true);
+      setShowCallDialog(false);
+    } catch (error) {
+      console.error('Error starting call:', error);
+      alert('Çağrı başlatılamadı');
+    }
+  };
+
+  // Accept call function
+  const acceptCall = async () => {
+    if (!incomingCall || !socket || !session?.user?.id) return;
+
+    try {
+      let callId = incomingCall.callId;
+
+      // Eğer callId yoksa, veritabanından bul
+      if (!callId) {
+        const callsRes = await fetch('/api/calls?status=pending', {
+          credentials: 'include',
+        });
+        const calls = await callsRes.json();
+        const call = calls.find((c: any) => c.callerId === incomingCall.callerId && c.status === 'pending');
+        if (!call) {
+          throw new Error('Call not found');
+        }
+        callId = call.id;
+      }
+
+      // Accept call
+      const acceptRes = await fetch(`/api/calls/${callId}/accept`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+
+      if (!acceptRes.ok) {
+        throw new Error('Failed to accept call');
+      }
+
+      // Set active call
+      if (callId) {
+        setActiveCall({
+          id: callId,
+          callerId: incomingCall.callerId,
+          receiverId: session.user.id,
+          type: incomingCall.type,
+          isCaller: false,
+        });
+      }
+
+      setIsInCall(true);
+      setIncomingCall(null);
+    } catch (error) {
+      console.error('Error accepting call:', error);
+      alert('Çağrı kabul edilemedi');
+      setIncomingCall(null);
+    }
+  };
+
+  // Reject call function
+  const rejectCall = async () => {
+    if (!incomingCall || !socket || !session?.user?.id) return;
+
+    try {
+      let callId = incomingCall.callId;
+
+      // Eğer callId yoksa, veritabanından bul
+      if (!callId) {
+        const callsRes = await fetch('/api/calls?status=pending', {
+          credentials: 'include',
+        });
+        const calls = await callsRes.json();
+        const call = calls.find((c: any) => c.callerId === incomingCall.callerId && c.status === 'pending');
+        if (call) {
+          callId = call.id;
+        }
+      }
+
+      if (callId) {
+        // Reject call
+        await fetch(`/api/calls/${callId}/reject`, {
+          method: 'POST',
+          credentials: 'include',
+        }).catch(err => console.error('Reject call API error:', err));
+      }
+
+      // Notify caller via socket
+      socket.emit('call:reject', {
+        callerId: incomingCall.callerId,
+      });
+
+      setIncomingCall(null);
+    } catch (error) {
+      console.error('Error rejecting call:', error);
+      setIncomingCall(null);
+    }
+  };
+
+  // End call function
+  const endCall = async () => {
+    if (!activeCall || !socket) return;
+
+    try {
+      // End call in database
+      await fetch(`/api/calls/${activeCall.id}/end`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+        credentials: 'include',
+      });
+
+      // Notify other party via socket
+      socket.emit('call:end', {
+        targetId: activeCall.isCaller ? activeCall.receiverId : activeCall.callerId,
+      });
+
+      setActiveCall(null);
+      setIsInCall(false);
+    } catch (error) {
+      console.error('Error ending call:', error);
+    }
+  };
 
   const sendMessage = async (type: Message['type'] = 'text', file?: File, locationData?: { lat: number; lng: number; name: string }, liveLocationDuration?: number) => {
     if (isSending) return;
     
+    // İletme modunda
+    if (forwardingMessage) {
+      try {
+        setIsSending(true);
+        const res = await fetch(`/api/messages/${(forwardingMessage as Message).id}/forward`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ groupId: selectedTab }),
+          credentials: 'include',
+        });
+        if (res.ok) {
+        const newMessage = await res.json();
+        setMessages(prev => [...prev, newMessage]);
+          setForwardingMessage(null);
+        if (shouldAutoScrollRef.current) {
+          scrollToBottom();
+        }
+        } else {
+          const error = await res.json();
+          alert(error.error || 'Mesaj iletilenemedi');
+        }
+      } catch (error) {
+        console.error('Forward message error:', error);
+        alert('Mesaj iletilenemedi');
+      } finally {
+        setIsSending(false);
+      }
+      return;
+    }
+    
     if (type === 'text' && !inputText.trim() && !file) return;
-    if ((type === 'image' || type === 'video') && !file) return;
+    if ((type === 'image' || type === 'video' || type === 'document' || type === 'file') && !file) return;
     if (type === 'audio' && !file) return;
     if (type === 'location' && !locationData) return;
     if (type === 'live_location' && (!locationData || !liveLocationDuration)) return;
@@ -618,6 +994,10 @@ export default function SohbetPage() {
         formData.append('groupId', selectedTab); // Seçili grup ID'si
       }
       // selectedTab null ise groupId göndermiyoruz (LPBH/HERKES için)
+      
+      if (forwardingMessage) {
+        formData.append('forwardedFromId', (forwardingMessage as Message).id);
+      }
       
       if (type === 'text') {
         formData.append('content', processedContent);
@@ -660,7 +1040,9 @@ export default function SohbetPage() {
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
-        scrollToBottom();
+        if (shouldAutoScrollRef.current) {
+          scrollToBottom();
+        }
       } else {
         const error = await res.json();
         alert(error.error || 'Mesaj gönderilemedi');
@@ -679,13 +1061,17 @@ export default function SohbetPage() {
 
     const isImage = file.type.startsWith('image/');
     const isVideo = file.type.startsWith('video/');
+    const isDocument = file.type.includes('pdf') || file.type.includes('document') || file.type.includes('text') || 
+                       file.type.includes('msword') || file.type.includes('spreadsheet') || file.type.includes('presentation');
 
     if (isImage) {
       sendMessage('image', file);
     } else if (isVideo) {
       sendMessage('video', file);
+    } else if (isDocument) {
+      sendMessage('document', file);
     } else {
-      alert('Sadece resim ve video dosyaları yüklenebilir');
+      sendMessage('file', file);
     }
   };
 
@@ -968,39 +1354,267 @@ export default function SohbetPage() {
   }
 
   return (
-    <div className="flex flex-col h-full md:h-full rounded-none md:rounded-lg border-0 md:border border-gray-700 shadow-xl w-full relative" style={{ zIndex: 1, overflowX: 'hidden', overflowY: 'visible' }}>
-      {/* Header with Tabs - Modern Design */}
-      <div className="bg-background-secondary/80 backdrop-blur-md border-b border-gray-700/50 flex-shrink-0 w-full sticky top-0 z-20">
-        <div className="px-4 py-3 md:px-6 md:py-4">
-          <h1 className="text-xl md:text-2xl font-bold text-white mb-4">Sohbet</h1>
-          
-          {/* Tabs - Modern Design */}
-          <div className="flex overflow-x-auto scrollbar-hide gap-1 -mx-4 md:-mx-6 px-4 md:px-6">
+    <div className="flex flex-col h-full min-h-0 rounded-none md:rounded-lg border-0 md:border border-gray-700/50 shadow-2xl w-full relative bg-gradient-to-b from-background via-background-secondary/30 to-background overflow-hidden" style={{ zIndex: 1, overflowX: 'hidden' }}>
+      {/* Header - Telegram/WhatsApp Style */}
+      <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent backdrop-blur-lg border-b border-primary/20 flex-shrink-0 w-full sticky top-0 z-30 shadow-lg">
+        <div className="px-3 py-2.5 md:px-4 md:py-3">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <h1 className="text-lg md:text-xl font-bold text-white tracking-tight flex items-center gap-2">
+                <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                Sohbet
+              </h1>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {/* Private Message Button */}
+              <button
+                onClick={() => setShowPrivateMessageDialog(true)}
+                className="p-2 text-gray-300 hover:text-primary hover:bg-primary/10 rounded-xl transition-all active:scale-95"
+                title="Özel mesaj gönder"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              </button>
+              {/* Voice Call Button */}
+              <button
+                onClick={() => {
+                  if (selectedRecipient) {
+                    startCall(selectedRecipient.id, 'audio');
+                  } else {
+                    setCallType('audio');
+                    setShowCallDialog(true);
+                  }
+                }}
+                className="p-2 text-gray-300 hover:text-primary hover:bg-primary/10 rounded-xl transition-all active:scale-95"
+                title="Sesli arama"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                </svg>
+              </button>
+              {/* Video Call Button */}
+              <button
+                onClick={() => {
+                  if (selectedRecipient) {
+                    startCall(selectedRecipient.id, 'video');
+                  } else {
+                    setCallType('video');
+                    setShowCallDialog(true);
+                  }
+                }}
+                className="p-2 text-gray-300 hover:text-primary hover:bg-primary/10 rounded-xl transition-all active:scale-95"
+                title="Görüntülü arama"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </button>
+              {/* Search Button */}
+              <button
+                onClick={() => setShowSearch(!showSearch)}
+                className="p-2 text-gray-300 hover:text-primary hover:bg-primary/10 rounded-xl transition-all active:scale-95"
+                title="Ara"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </button>
+              {/* Pinned Messages Button */}
+              <button
+                onClick={async () => {
+                  setShowPinnedMessages(!showPinnedMessages);
+                  if (!showPinnedMessages) {
+                    try {
+                      const params = new URLSearchParams();
+                      if (selectedTab) {
+                        params.append('groupId', selectedTab);
+                      }
+                      const res = await fetch(`/api/messages/pinned?${params.toString()}`, {
+                        credentials: 'include',
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        setPinnedMessages(data);
+                      }
+                    } catch (error) {
+                      console.error('Pinned messages fetch error:', error);
+                    }
+                  }
+                }}
+                className="p-2 text-gray-300 hover:text-primary hover:bg-primary/10 rounded-xl transition-all active:scale-95 relative"
+                title="Sabitli mesajlar"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                </svg>
+                {pinnedMessages.length > 0 && (
+                  <span className="absolute top-0 right-0 w-2 h-2 bg-primary rounded-full animate-pulse" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Search Bar - Telegram Style */}
+          {showSearch && (
+            <div className="mb-3 animate-in slide-in-from-top-2 duration-200">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={async (e) => {
+                    if (e.key === 'Enter' && searchQuery.trim()) {
+                      try {
+                        const params = new URLSearchParams();
+                        params.append('q', searchQuery);
+                        params.append('limit', '50');
+                        if (selectedTab) {
+                          params.append('groupId', selectedTab);
+                        }
+                        const res = await fetch(`/api/messages/search?${params.toString()}`, {
+                          credentials: 'include',
+                        });
+                        if (res.ok) {
+                          const data = await res.json();
+                          setMessages(data.reverse());
+                        }
+                      } catch (error) {
+                        console.error('Search error:', error);
+                      }
+                    }
+                  }}
+                  placeholder="Mesajlarda ara..."
+                  className="w-full px-4 py-2.5 pl-10 bg-background/50 backdrop-blur-sm border border-primary/20 text-white rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all placeholder:text-gray-500"
+                  autoFocus
+                />
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                {searchQuery && (
+                  <button
+                    onClick={async () => {
+                      setSearchQuery('');
+                      setShowSearch(false);
+                      await fetchMessages();
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Pinned Messages - Telegram Style */}
+          {showPinnedMessages && pinnedMessages.length > 0 && (
+            <div className="mb-3 p-3 bg-background/60 backdrop-blur-sm rounded-xl border border-primary/20 max-h-48 overflow-y-auto custom-scrollbar animate-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center gap-2 mb-2">
+                <svg className="w-4 h-4 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                </svg>
+                <div className="text-xs text-gray-300 font-semibold">Sabitli Mesajlar ({pinnedMessages.length})</div>
+              </div>
+              {pinnedMessages.map((pinnedMsg) => (
+                <button
+                  key={pinnedMsg.id}
+                  onClick={() => {
+                    const messageElement = document.getElementById(`message-${pinnedMsg.id}`);
+                    if (messageElement) {
+                      messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      messageElement.classList.add('ring-2', 'ring-primary', 'ring-offset-2', 'ring-offset-background');
+                      setTimeout(() => {
+                        messageElement.classList.remove('ring-2', 'ring-primary', 'ring-offset-2', 'ring-offset-background');
+                      }, 2000);
+                    }
+                    setShowPinnedMessages(false);
+                  }}
+                  className="w-full text-left p-2.5 hover:bg-primary/10 rounded-lg transition-all text-sm mb-1.5 border border-transparent hover:border-primary/20 active:scale-[0.98]"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-rye text-xs text-primary font-bold">{pinnedMsg.sender.rutbe || ''}</span>
+                    <span className="text-xs font-semibold text-white">{getUserDisplayName(pinnedMsg.sender)}</span>
+                  </div>
+                  <div className="text-xs text-gray-400 truncate">
+                    {pinnedMsg.content || `${pinnedMsg.type} mesajı`}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Tabs - Telegram Style */}
+          <div className="flex overflow-x-auto scrollbar-hide gap-2 -mx-3 md:-mx-4 px-3 md:px-4 pb-1">
             {accessibleTabs.map((tab) => (
               <button
                 key={tab.id || 'all'}
-                onClick={() => setSelectedTab(tab.id)}
-                className={`px-4 py-2 md:px-5 md:py-2.5 text-sm font-medium whitespace-nowrap transition-all rounded-lg ${
+                onClick={() => {
+                  // Sekme değişiminde yeni sekmeye geçerken auto-scroll izni ver
+                  shouldAutoScrollRef.current = true;
+                  setSelectedTab(tab.id);
+                }}
+                className={`px-4 py-2 text-sm font-medium whitespace-nowrap transition-all rounded-xl relative ${
                   selectedTab === tab.id
-                    ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                    : 'text-gray-400 hover:text-white hover:bg-background-tertiary/50'
+                    ? 'text-white bg-gradient-to-r from-primary to-primary/80 shadow-lg shadow-primary/30'
+                    : 'text-gray-400 hover:text-white hover:bg-background-tertiary/50 active:scale-95'
                 }`}
               >
                 {tab.name}
+                {selectedTab === tab.id && (
+                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-white rounded-full" />
+                )}
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Messages */}
-      <div 
-        id="messages-container"
-        className="flex-1 overflow-y-auto overflow-x-hidden px-1 md:px-4 py-2 md:py-4 space-y-3 md:space-y-4 w-full relative flex flex-col-reverse" 
-        style={{ zIndex: 0 }}
-      >
-        <div ref={messagesEndRef} />
-        {messages.slice().reverse().map((message, reversedIndex) => {
+      {/* Messages - Telegram/WhatsApp Style */}
+      <div className="relative flex-1 min-h-0 overflow-hidden">
+        {/* Aşağı in butonu - sol altta, yeni mesaj sayacıyla (scroll'dan bağımsız görünür) */}
+        {showScrollToBottom && (
+          <button
+            onClick={() => {
+              scrollToBottom();
+              setUnreadWhileScrolledUp(0);
+              setShowScrollToBottom(false);
+            }}
+            className="absolute right-4 bottom-28 z-[200] bg-primary text-white rounded-full shadow-lg hover:bg-primary/90 active:scale-95 transition flex items-center gap-2 px-3 py-2 pointer-events-auto"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 13l-7 7-7-7M12 20V4" />
+            </svg>
+            {unreadWhileScrolledUp > 0 && (
+              <span className="ml-1 text-xs font-semibold bg-white text-primary rounded-full px-2 py-0.5">
+                {unreadWhileScrolledUp}
+              </span>
+            )}
+          </button>
+        )}
+        <div 
+          id="messages-container"
+          className="h-full overflow-y-auto overflow-x-hidden px-2 md:px-4 py-3 md:py-4 pb-56 space-y-2 md:space-y-3 w-full relative flex flex-col-reverse bg-gradient-to-b from-transparent via-background/20 to-background custom-scrollbar" 
+          style={{ zIndex: 0 }}
+          onScroll={(e) => {
+            const el = e.currentTarget as HTMLDivElement;
+            const threshold = 5;
+            // flex-col-reverse: en altta olmak = scrollTop <= threshold
+            // track whether we should auto-scroll on new messages
+            const atBottom = el.scrollTop <= threshold;
+            shouldAutoScrollRef.current = atBottom;
+            setShowScrollToBottom(!atBottom);
+            if (atBottom) {
+              setUnreadWhileScrolledUp(0);
+            }
+          }}
+        >
+          <div ref={messagesEndRef} />
+          {messages.slice().reverse().map((message, reversedIndex) => {
           const own = isOwnMessage(message);
           // Reversed array'de prevMessage = reversed array'deki bir önceki mesaj
           const reversedMessages = messages.slice().reverse();
@@ -1012,7 +1626,7 @@ export default function SohbetPage() {
             new Date(message.createdAt).getTime() - new Date(prevMessage.createdAt).getTime() > 300000; // 5 dakika
 
           return (
-            <div key={message.id}>
+            <div key={message.id} id={`message-${message.id}`}>
               {/* Date Separator */}
               {showDateSeparator && (
                 <div className="flex items-center justify-center my-2 md:my-4">
@@ -1023,7 +1637,23 @@ export default function SohbetPage() {
               )}
 
               <div
-                className={`flex ${own ? 'justify-end' : 'justify-start'} group relative message-menu-container min-w-0`}
+                className={`flex ${own ? 'justify-end' : 'justify-start'} group relative message-menu-container min-w-0 ${
+                  selectedMessages.has(message.id) ? 'ring-2 ring-primary' : ''
+                }`}
+                onClick={() => {
+                  if (selectionMode) {
+                    const newSelection = new Set(selectedMessages);
+                    if (newSelection.has(message.id)) {
+                      newSelection.delete(message.id);
+                    } else {
+                      newSelection.add(message.id);
+                    }
+                    setSelectedMessages(newSelection);
+                    if (newSelection.size === 0) {
+                      setSelectionMode(false);
+                    }
+                  }
+                }}
               >
                 {/* Message Menu Button */}
                 <div className={`absolute ${own ? 'left-0 -translate-x-full mr-2' : 'right-0 translate-x-full ml-2'} top-0 opacity-0 group-hover:opacity-100 transition-opacity z-10 message-menu-container`}>
@@ -1038,16 +1668,125 @@ export default function SohbetPage() {
                   
                   {/* Message Menu */}
                   {showMessageMenu === message.id && (
-                    <div className={`absolute ${own ? 'left-full ml-2' : 'right-full mr-2'} top-0 bg-background-secondary border border-gray-700 rounded-lg shadow-xl min-w-[150px] z-20`}>
+                    <div className={`absolute ${own ? 'left-full ml-2' : 'right-full mr-2'} top-0 bg-background-secondary border border-gray-700 rounded-lg shadow-xl min-w-[180px] z-20 max-h-[400px] overflow-y-auto`}>
                       {!own && (
                         <button
                           onClick={() => {
                             setReplyingTo(message);
                             setShowMessageMenu(null);
                           }}
-                          className="w-full text-left px-3 py-2 hover:bg-background-tertiary rounded-t-lg transition text-sm"
+                          className="w-full text-left px-3 py-2 hover:bg-background-tertiary rounded-t-lg transition text-sm flex items-center gap-2"
                         >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                          </svg>
                           Yanıtla
+                        </button>
+                      )}
+                      <button
+                        onClick={async () => {
+                          if (forwardingMessage?.id === message.id) {
+                            setForwardingMessage(null);
+                          } else {
+                            setForwardingMessage(message);
+                          }
+                          setShowMessageMenu(null);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-background-tertiary transition text-sm flex items-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                        </svg>
+                        İlet
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (message.content) {
+                            navigator.clipboard.writeText(message.content);
+                            setShowMessageMenu(null);
+                          }
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-background-tertiary transition text-sm flex items-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                        Kopyala
+                      </button>
+                      <button
+                        onClick={() => {
+                          const newSelection = new Set(selectedMessages);
+                          if (newSelection.has(message.id)) {
+                            newSelection.delete(message.id);
+                          } else {
+                            newSelection.add(message.id);
+                          }
+                          setSelectedMessages(newSelection);
+                          if (newSelection.size === 0) {
+                            setSelectionMode(false);
+                          } else {
+                            setSelectionMode(true);
+                          }
+                          setShowMessageMenu(null);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-background-tertiary transition text-sm flex items-center gap-2"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                        </svg>
+                        Seç
+                      </button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`/api/messages/${message.id}/star`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ star: !message.isStarred }),
+                              credentials: 'include',
+                            });
+                            if (res.ok) {
+                              const updatedMessage = await res.json();
+                              setMessages(prev => prev.map(m => m.id === message.id ? updatedMessage : m));
+                            }
+                          } catch (error) {
+                            console.error('Star message error:', error);
+                          }
+                          setShowMessageMenu(null);
+                        }}
+                        className="w-full text-left px-3 py-2 hover:bg-background-tertiary transition text-sm flex items-center gap-2"
+                      >
+                        <svg className={`w-4 h-4 ${message.isStarred ? 'fill-yellow-400 text-yellow-400' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                        </svg>
+                        {message.isStarred ? 'Yıldızdan Çıkar' : 'Yıldızla'}
+                      </button>
+                      {message.senderId === session?.user?.id && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await fetch(`/api/messages/${message.id}/pin`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ pin: !message.pinned }),
+                                credentials: 'include',
+                              });
+                              if (res.ok) {
+                                const updatedMessage = await res.json();
+                                setMessages(prev => prev.map(m => m.id === message.id ? updatedMessage : m));
+                                await fetchMessages();
+                              }
+                            } catch (error) {
+                              console.error('Pin message error:', error);
+                            }
+                            setShowMessageMenu(null);
+                          }}
+                          className="w-full text-left px-3 py-2 hover:bg-background-tertiary transition text-sm flex items-center gap-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                          </svg>
+                          {message.pinned ? 'Sabitlemeyi Kaldır' : 'Sabitle'}
                         </button>
                       )}
                       {canEditMessage(message) && (
@@ -1057,8 +1796,11 @@ export default function SohbetPage() {
                             setEditText(message.content || '');
                             setShowMessageMenu(null);
                           }}
-                          className={`w-full text-left px-3 py-2 hover:bg-background-tertiary transition text-sm ${!own ? 'rounded-t-lg' : ''}`}
+                          className="w-full text-left px-3 py-2 hover:bg-background-tertiary transition text-sm flex items-center gap-2"
                         >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
                           Düzenle
                         </button>
                       )}
@@ -1068,8 +1810,11 @@ export default function SohbetPage() {
                             handleDeleteMessage(message.id);
                             setShowMessageMenu(null);
                           }}
-                          className="w-full text-left px-3 py-2 hover:bg-background-tertiary text-red-400 hover:text-red-300 rounded-b-lg transition text-sm"
+                          className="w-full text-left px-3 py-2 hover:bg-background-tertiary text-red-400 hover:text-red-300 rounded-b-lg transition text-sm flex items-center gap-2"
                         >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
                           Sil
                         </button>
                       )}
@@ -1106,11 +1851,13 @@ export default function SohbetPage() {
                   </div>
                 ) : (
                   <div
-                    className={`max-w-[75%] lg:max-w-[60%] rounded-2xl p-3 shadow-lg min-w-0 ${
+                    className={`max-w-[75%] lg:max-w-[60%] rounded-2xl p-3.5 shadow-xl min-w-0 transition-all ${
                       own
-                        ? 'bg-primary text-white rounded-br-md'
-                        : 'bg-background-tertiary text-white rounded-bl-md border border-gray-700'
-                    } ${replyingTo?.id === message.id ? 'ring-2 ring-primary/50' : ''}`}
+                        ? 'bg-gradient-to-br from-primary to-primary/90 text-white rounded-br-sm ml-auto'
+                        : 'bg-background-secondary/80 backdrop-blur-sm text-white rounded-bl-sm border border-gray-700/50 mr-auto'
+                    } ${replyingTo?.id === message.id ? 'ring-2 ring-primary/70 ring-offset-2 ring-offset-background' : ''} ${
+                      selectedMessages.has(message.id) ? 'ring-2 ring-primary' : ''
+                    } hover:shadow-2xl`}
                     style={{ 
                       wordBreak: 'normal',
                       overflowWrap: 'break-word',
@@ -1121,10 +1868,12 @@ export default function SohbetPage() {
                     }}
                     onContextMenu={(e) => {
                       e.preventDefault();
-                      if (!own) {
-                        setReplyingTo(message);
-                      } else {
-                        setShowMessageMenu(message.id);
+                      if (!selectionMode) {
+                        if (!own) {
+                          setReplyingTo(message);
+                        } else {
+                          setShowMessageMenu(message.id);
+                        }
                       }
                     }}
                   >
@@ -1136,6 +1885,19 @@ export default function SohbetPage() {
                       </span>
                       <span className="text-xs font-semibold opacity-90">
                         {getUserDisplayName(message.sender)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Forwarded Preview */}
+                  {message.forwardedFrom && (
+                    <div className={`mb-2 pb-2 border-l-2 ${own ? 'border-white/30' : 'border-primary/50'} pl-2 text-xs opacity-75 flex items-center gap-1`}>
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                      </svg>
+                      <span className="font-semibold flex items-center gap-1">
+                        <span className="font-rye">{message.forwardedFrom.sender.rutbe || ''}</span>
+                        {getUserDisplayName(message.forwardedFrom.sender)} tarafından iletildi
                       </span>
                     </div>
                   )}
@@ -1153,12 +1915,28 @@ export default function SohbetPage() {
                         {message.repliedTo.type === 'video' && '🎥 Video'}
                         {message.repliedTo.type === 'audio' && '🎤 Ses'}
                         {message.repliedTo.type === 'location' && '📍 Konum'}
+                        {message.repliedTo.type === 'document' && '📄 ' + ((message.repliedTo as any).fileName || 'Dosya')}
+                        {message.repliedTo.type === 'file' && '📎 ' + ((message.repliedTo as any).fileName || 'Dosya')}
                       </div>
                     </div>
                   )}
 
+                  {/* Pinned Indicator */}
+                  {message.pinned && (
+                    <div className="mb-2 flex items-center gap-1 text-xs opacity-75">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                      </svg>
+                      <span>Sabitli</span>
+                    </div>
+                  )}
+
                   {/* Message Content */}
-                  {message.type === 'text' && (
+                  {message.deletedAt ? (
+                    <div className="italic text-gray-400 text-sm">
+                      Bu mesaj silindi
+                    </div>
+                  ) : message.type === 'text' && (
                     <div 
                       className="whitespace-pre-wrap leading-relaxed"
                       style={{ 
@@ -1179,7 +1957,7 @@ export default function SohbetPage() {
                             return (
                               <span 
                                 key={index} 
-                                className={`font-semibold ${isMentioned ? 'bg-yellow-500/30 text-yellow-300 px-1 rounded' : 'text-black'}`}
+                                className={`font-semibold ${isMentioned ? 'bg-yellow-500/30 text-yellow-300 px-1 rounded' : own ? 'text-white' : 'text-gray-300'}`}
                               >
                                 @{displayName}
                               </span>
@@ -1192,25 +1970,104 @@ export default function SohbetPage() {
                   )}
 
                   {message.type === 'image' && message.mediaUrl && (
-                    <div>
+                    <div className="relative group">
                       <img
                         src={message.mediaUrl}
                         alt="Gönderilen resim"
-                        className="max-w-full rounded-xl mb-2 shadow-md"
+                        onClick={() => {
+                          // Tüm resimleri topla
+                          const allImages = messages
+                            .filter(m => m.type === 'image' && m.mediaUrl)
+                            .map(m => ({ id: m.id, url: m.mediaUrl!, type: 'image' }));
+                          setMediaGallery(allImages);
+                          const currentIndex = allImages.findIndex(m => m.id === message.id);
+                          setSelectedMedia({ url: message.mediaUrl!, type: 'image' });
+                          setShowMediaViewer(true);
+                        }}
+                        className="max-w-full rounded-xl mb-2 shadow-lg cursor-pointer hover:opacity-90 transition-all hover:scale-[1.02]"
+                        loading="lazy"
                       />
-                      {message.content && <div className="mt-2">{message.content}</div>}
+                      {message.content && (
+                        <div className="mt-2 text-sm leading-relaxed">{message.content}</div>
+                      )}
+                      {/* Self-destruct timer */}
+                      {message.selfDestruct && message.expiresAt && (
+                        <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded-lg text-xs text-white flex items-center gap-1">
+                          <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          {Math.max(0, Math.ceil((new Date(message.expiresAt).getTime() - Date.now()) / 1000))}s
+                        </div>
+                      )}
                     </div>
                   )}
 
                   {message.type === 'video' && message.mediaUrl && (
-                    <div>
+                    <div className="relative group">
                       <video
                         src={message.mediaUrl}
                         controls
-                        className="max-w-full rounded-xl mb-2 shadow-md"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          // Tüm videoları topla
+                          const allVideos = messages
+                            .filter(m => m.type === 'video' && m.mediaUrl)
+                            .map(m => ({ id: m.id, url: m.mediaUrl!, type: 'video' }));
+                          setMediaGallery(allVideos);
+                          setSelectedMedia({ url: message.mediaUrl!, type: 'video' });
+                          setShowMediaViewer(true);
+                        }}
+                        className="max-w-full rounded-xl mb-2 shadow-lg cursor-pointer hover:opacity-90 transition-all"
+                        preload="metadata"
                       />
-                      {message.content && <div className="mt-2">{message.content}</div>}
+                      {message.content && (
+                        <div className="mt-2 text-sm leading-relaxed">{message.content}</div>
+                      )}
+                      {/* Self-destruct timer */}
+                      {message.selfDestruct && message.expiresAt && (
+                        <div className="absolute top-2 right-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded-lg text-xs text-white flex items-center gap-1">
+                          <svg className="w-3 h-3 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          {Math.max(0, Math.ceil((new Date(message.expiresAt).getTime() - Date.now()) / 1000))}s
+                        </div>
+                      )}
                     </div>
+                  )}
+
+                  {(message.type === 'document' || message.type === 'file') && message.mediaUrl && (
+                    <div className="flex items-center gap-3 p-3 bg-background/50 rounded-lg border border-gray-700">
+                      <div className="w-12 h-12 bg-primary/20 rounded-lg flex items-center justify-center flex-shrink-0">
+                        {message.type === 'document' ? (
+                          <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-6 h-6 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{message.fileName || 'Dosya'}</p>
+                        {message.fileSize && (
+                          <p className="text-xs text-gray-400">
+                            {(message.fileSize / 1024 / 1024).toFixed(2)} MB
+                          </p>
+                        )}
+                      </div>
+                      <a
+                        href={message.mediaUrl}
+                        download={message.fileName}
+                        className="px-3 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition text-sm flex-shrink-0"
+                      >
+                        İndir
+                      </a>
+                    </div>
+                  )}
+
+                  {message.content && (message.type === 'document' || message.type === 'file') && (
+                    <div className="mt-2">{message.content}</div>
                   )}
 
                   {message.type === 'audio' && message.mediaUrl && (
@@ -1319,9 +2176,127 @@ export default function SohbetPage() {
                     </div>
                   )}
 
-                  {/* Time */}
-                  <div className={`text-xs mt-0.5 ${own ? 'text-right text-white/70' : 'text-left text-gray-400'}`}>
-                    {formatTime(message.createdAt)}
+                  {/* Reactions */}
+                  {message.reactions && message.reactions.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {Array.from(new Set(message.reactions.map(r => r.emoji))).map((emoji) => {
+                        const emojiReactions = message.reactions!.filter(r => r.emoji === emoji);
+                        const hasReacted = emojiReactions.some(r => r.userId === session?.user?.id);
+                        return (
+                          <button
+                            key={emoji}
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(`/api/messages/${message.id}/reaction`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ emoji, remove: hasReacted }),
+                                  credentials: 'include',
+                                });
+                                if (res.ok) {
+                                  const updatedMessage = await res.json();
+                                  setMessages(prev => prev.map(m => m.id === message.id ? updatedMessage : m));
+                                }
+                              } catch (error) {
+                                console.error('Reaction error:', error);
+                              }
+                            }}
+                            className={`px-2 py-1 rounded-full text-xs border transition ${hasReacted 
+                              ? 'bg-primary/20 border-primary/50' 
+                              : own 
+                                ? 'bg-white/10 border-white/20 hover:bg-white/20' 
+                                : 'bg-background-tertiary border-gray-700 hover:bg-gray-700'
+                            }`}
+                          >
+                            <span>{emoji}</span>
+                            <span className="ml-1">{emojiReactions.length}</span>
+                          </button>
+                        );
+                      })}
+                      <button
+                        onClick={async () => {
+                          // Emoji picker aç (basit versiyon - direkt 👍 ekle)
+                          try {
+                            const res = await fetch(`/api/messages/${message.id}/reaction`, {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ emoji: '👍', remove: false }),
+                              credentials: 'include',
+                            });
+                            if (res.ok) {
+                              const updatedMessage = await res.json();
+                              setMessages(prev => prev.map(m => m.id === message.id ? updatedMessage : m));
+                            }
+                          } catch (error) {
+                            console.error('Reaction error:', error);
+                          }
+                        }}
+                        className={`px-2 py-1 rounded-full text-xs border transition ${own 
+                          ? 'bg-white/10 border-white/20 hover:bg-white/20' 
+                          : 'bg-background-tertiary border-gray-700 hover:bg-gray-700'
+                        }`}
+                        title="Reaksiyon ekle"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Reactions (if no reactions yet) */}
+                  {(!message.reactions || message.reactions.length === 0) && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`/api/messages/${message.id}/reaction`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ emoji: '👍', remove: false }),
+                            credentials: 'include',
+                          });
+                          if (res.ok) {
+                            const updatedMessage = await res.json();
+                            setMessages(prev => prev.map(m => m.id === message.id ? updatedMessage : m));
+                          }
+                        } catch (error) {
+                          console.error('Reaction error:', error);
+                        }
+                      }}
+                      className={`mt-2 px-2 py-1 rounded-full text-xs border transition opacity-0 group-hover:opacity-100 ${own 
+                        ? 'bg-white/10 border-white/20 hover:bg-white/20' 
+                        : 'bg-background-tertiary border-gray-700 hover:bg-gray-700'
+                      }`}
+                      title="Reaksiyon ekle"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </button>
+                  )}
+
+                  {/* Time and Read Receipts */}
+                  <div className={`flex items-center gap-1 mt-0.5 ${own ? 'justify-end' : 'justify-start'}`}>
+                    {message.editedAt && (
+                      <span className={`text-xs ${own ? 'text-white/50' : 'text-gray-500'}`}>(düzenlendi)</span>
+                    )}
+                    <div className={`text-xs ${own ? 'text-white/70' : 'text-gray-400'}`}>
+                      {formatTime(message.createdAt)}
+                    </div>
+                    {own && message.readReceipts && message.readReceipts.length > 0 && (
+                      <div className="flex items-center gap-1">
+                        {message.readReceipts.length >= 2 ? (
+                          <svg className="w-4 h-4 text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                            <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                          </svg>
+                        ) : (
+                          <svg className="w-4 h-4 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" />
+                          </svg>
+                        )}
+                      </div>
+                    )}
                   </div>
                   </div>
                 )}
@@ -1330,15 +2305,105 @@ export default function SohbetPage() {
           );
         })}
       </div>
+      </div>
 
-      {/* Input Area - Modern Design */}
-      <div className="px-2 py-2 md:px-4 md:py-4 flex-shrink-0 overflow-visible w-full relative" style={{ zIndex: 100, position: 'relative', transform: 'translateZ(0)' }}>
-        {/* Reply Preview */}
+      {/* Selection Mode Bar */}
+      {selectionMode && selectedMessages.size > 0 && (
+        <div className="px-4 py-3 bg-background-secondary border-t border-gray-700 flex items-center justify-between">
+          <div className="text-sm text-white">
+            {selectedMessages.size} mesaj seçildi
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async () => {
+                // Toplu yıldızla
+                for (const msgId of Array.from(selectedMessages)) {
+                  try {
+                    await fetch(`/api/messages/${msgId}/star`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ star: true }),
+                      credentials: 'include',
+                    });
+                  } catch (error) {
+                    console.error('Star error:', error);
+                  }
+                }
+                setSelectedMessages(new Set());
+                setSelectionMode(false);
+                await fetchMessages();
+              }}
+              className="px-3 py-1.5 bg-primary text-white rounded-lg hover:bg-primary/90 transition text-sm"
+            >
+              Yıldızla
+            </button>
+            <button
+              onClick={async () => {
+                // Toplu sil
+                if (confirm(`${selectedMessages.size} mesajı silmek istediğinizden emin misiniz?`)) {
+                  for (const msgId of Array.from(selectedMessages)) {
+                    try {
+                      await fetch(`/api/messages/${msgId}`, {
+                        method: 'DELETE',
+                        credentials: 'include',
+                      });
+                    } catch (error) {
+                      console.error('Delete error:', error);
+                    }
+                  }
+                  setSelectedMessages(new Set());
+                  setSelectionMode(false);
+                  await fetchMessages();
+                }
+              }}
+              className="px-3 py-1.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm"
+            >
+              Sil
+            </button>
+            <button
+              onClick={() => {
+                setSelectedMessages(new Set());
+                setSelectionMode(false);
+              }}
+              className="px-3 py-1.5 bg-background-tertiary text-white rounded-lg hover:bg-gray-700 transition text-sm"
+            >
+              İptal
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Forward Preview */}
+      {forwardingMessage && (
+        <div className="px-4 py-3 bg-background-secondary border-t border-gray-700 flex items-center justify-between">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <svg className="w-4 h-4 text-primary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            </svg>
+            <div className="text-sm text-gray-300 truncate">
+              {forwardingMessage.content || forwardingMessage.type} iletiliyor...
+            </div>
+          </div>
+          <button
+            onClick={() => setForwardingMessage(null)}
+            className="text-gray-400 hover:text-white ml-3 transition flex-shrink-0"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {/* Input Area - Telegram/WhatsApp Style */}
+      <div className="px-3 py-2.5 md:px-4 md:py-3 overflow-visible w-full absolute bottom-0 left-0 right-0 bg-gradient-to-t from-background via-background-secondary/50 to-transparent backdrop-blur-lg border-t border-gray-700/30" style={{ zIndex: 100, position: 'absolute', transform: 'translateZ(0)' }}>
+        {/* Reply Preview - Telegram Style */}
         {replyingTo && (
-          <div className="mb-2 md:mb-3 p-2 md:p-3 bg-background rounded-xl border border-primary/30 flex items-center justify-between shadow-md">
-            <div className="flex-1">
-              <div className="text-xs text-gray-400 mb-1">
-                <span className="font-rye">{replyingTo.sender.rutbe || ''}</span> {getUserDisplayName(replyingTo.sender)} yanıtlıyorsunuz:
+          <div className="mb-2.5 p-3 bg-background-secondary/80 backdrop-blur-sm rounded-xl border-l-4 border-primary shadow-lg flex items-center justify-between animate-in slide-in-from-bottom-2 duration-200">
+            <div className="flex-1 min-w-0">
+              <div className="text-xs text-primary mb-1 font-semibold flex items-center gap-1">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                </svg>
+                <span className="font-rye">{replyingTo.sender.rutbe || ''}</span> {getUserDisplayName(replyingTo.sender)}
               </div>
               <div className="text-sm text-gray-300 truncate">
                 {replyingTo.type === 'text' && replyingTo.content}
@@ -1346,13 +2411,69 @@ export default function SohbetPage() {
                 {replyingTo.type === 'video' && '🎥 Video'}
                 {replyingTo.type === 'audio' && '🎤 Ses'}
                 {replyingTo.type === 'location' && '📍 Konum'}
+                {replyingTo.type === 'document' && '📄 ' + (replyingTo.fileName || 'Dosya')}
+                {replyingTo.type === 'file' && '📎 ' + (replyingTo.fileName || 'Dosya')}
               </div>
             </div>
             <button
               onClick={() => setReplyingTo(null)}
-              className="text-gray-400 hover:text-white ml-3 transition"
+              className="text-gray-400 hover:text-primary ml-3 transition p-1 hover:bg-primary/10 rounded-lg active:scale-95"
             >
-              ×
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {/* Forward Preview - Telegram Style */}
+        {forwardingMessage && (
+          <div className="mb-2.5 p-3 bg-background-secondary/80 backdrop-blur-sm rounded-xl border-l-4 border-primary/50 shadow-lg flex items-center justify-between animate-in slide-in-from-bottom-2 duration-200">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <svg className="w-4 h-4 text-primary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+              </svg>
+              <div className="text-sm text-gray-300 truncate">
+                {forwardingMessage.content || `${forwardingMessage.type} mesajı`} iletiliyor...
+              </div>
+            </div>
+            <button
+              onClick={() => setForwardingMessage(null)}
+              className="text-gray-400 hover:text-primary ml-3 transition p-1 hover:bg-primary/10 rounded-lg active:scale-95 flex-shrink-0"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        )}
+
+        {/* Self-Destruct Timer Preview */}
+        {selfDestructEnabled && selfDestructSeconds && (
+          <div className="mb-2.5 p-2.5 bg-orange-500/20 backdrop-blur-sm rounded-lg border border-orange-500/30 flex items-center gap-2 animate-in slide-in-from-bottom-2 duration-200">
+            <svg className="w-4 h-4 text-orange-400 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-xs text-orange-300 font-semibold">
+              Süreli mesaj: {selfDestructSeconds < 60 
+                ? `${selfDestructSeconds}s` 
+                : selfDestructSeconds < 3600 
+                ? `${Math.floor(selfDestructSeconds / 60)}d`
+                : selfDestructSeconds < 86400
+                ? `${Math.floor(selfDestructSeconds / 3600)}s`
+                : `${Math.floor(selfDestructSeconds / 86400)}g`
+              } sonra silinecek
+            </span>
+            <button
+              onClick={() => {
+                setSelfDestructEnabled(false);
+                setSelfDestructSeconds(null);
+              }}
+              className="ml-auto text-orange-400 hover:text-orange-300 transition p-1"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
             </button>
           </div>
         )}
@@ -1420,8 +2541,8 @@ export default function SohbetPage() {
         )}
 
         {!recording && (
-        <div className="flex items-center gap-1.5 md:gap-2 min-w-0" style={{ overflow: 'visible' }}>
-          {/* Attachment Menu Button */}
+        <div className="flex items-end gap-2 min-w-0 bg-background-secondary/60 backdrop-blur-sm rounded-2xl p-2 border border-gray-700/30 shadow-lg" style={{ overflow: 'visible' }}>
+          {/* Attachment Menu Button - Telegram Style */}
           <div className="relative" ref={locationPickerRef} style={{ zIndex: 10000, position: 'relative' }}>
             <button
               ref={attachmentButtonRef}
@@ -1430,16 +2551,16 @@ export default function SohbetPage() {
                 setShowLocationPicker(false);
                 setShowLiveLocationOptions(false);
               }}
-              className="p-1 md:p-2.5 text-primary hover:text-primary/80 hover:bg-background rounded-lg transition flex-shrink-0"
+              className="p-2.5 text-primary hover:text-primary/90 hover:bg-primary/10 rounded-xl transition-all active:scale-95 flex-shrink-0"
               title="Eklentiler"
             >
-              <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
               </svg>
             </button>
             
             {showAttachmentMenu && (
-              <div className="absolute bottom-full mb-2 left-0 bg-background-secondary border border-gray-700 rounded-xl p-2 shadow-xl min-w-[200px]" style={{ 
+              <div className="absolute bottom-full mb-2 left-0 bg-background-secondary/95 backdrop-blur-xl border border-primary/20 rounded-2xl p-2 shadow-2xl min-w-[220px] animate-in slide-in-from-bottom-2 duration-200" style={{ 
                 zIndex: 99999,
                 position: 'absolute',
                 transform: 'translateZ(0)',
@@ -1449,7 +2570,7 @@ export default function SohbetPage() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept="image/*,video/*"
+                  accept="image/*,video/*,*/*"
                   onChange={(e) => {
                     handleFileSelect(e);
                     setShowAttachmentMenu(false);
@@ -1458,27 +2579,59 @@ export default function SohbetPage() {
                 />
                 <button
                   onClick={() => {
-                    fileInputRef.current?.click();
+                    if (fileInputRef.current) {
+                      fileInputRef.current.accept = 'image/*,video/*';
+                      fileInputRef.current.click();
+                    }
                   }}
-                  className="w-full text-left px-3 py-2 hover:bg-background-tertiary rounded-lg transition flex items-center gap-2 text-white"
+                  className="w-full text-left px-4 py-3 hover:bg-primary/10 rounded-xl transition-all flex items-center gap-3 text-white active:scale-[0.98] group"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                  </svg>
-                  Fotoğraf/Video
+                  <div className="w-10 h-10 bg-primary/20 rounded-xl flex items-center justify-center group-hover:bg-primary/30 transition">
+                    <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold">Fotoğraf/Video</div>
+                    <div className="text-xs text-gray-400">Resim veya video seç</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    if (fileInputRef.current) {
+                      fileInputRef.current.accept = '*/*';
+                      fileInputRef.current.click();
+                    }
+                  }}
+                  className="w-full text-left px-4 py-3 hover:bg-primary/10 rounded-xl transition-all flex items-center gap-3 text-white active:scale-[0.98] group mt-1"
+                >
+                  <div className="w-10 h-10 bg-primary/20 rounded-xl flex items-center justify-center group-hover:bg-primary/30 transition">
+                    <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold">Dosya Gönder</div>
+                    <div className="text-xs text-gray-400">Herhangi bir dosya seç</div>
+                  </div>
                 </button>
                 <button
                   onClick={() => {
                     setShowLocationPicker(true);
                     setShowAttachmentMenu(false);
                   }}
-                  className="w-full text-left px-3 py-2 hover:bg-background-tertiary rounded-lg transition flex items-center gap-2 text-white"
+                  className="w-full text-left px-4 py-3 hover:bg-primary/10 rounded-xl transition-all flex items-center gap-3 text-white active:scale-[0.98] group mt-1"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  Konum
+                  <div className="w-10 h-10 bg-primary/20 rounded-xl flex items-center justify-center group-hover:bg-primary/30 transition">
+                    <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold">Konum</div>
+                    <div className="text-xs text-gray-400">Konum paylaş</div>
+                  </div>
                 </button>
               </div>
             )}
@@ -1538,7 +2691,36 @@ export default function SohbetPage() {
             )}
           </div>
 
-          {/* Text Input */}
+          {/* Self-Destruct Button */}
+          <button
+            onClick={() => {
+              if (selfDestructEnabled) {
+                setSelfDestructEnabled(false);
+                setSelfDestructSeconds(null);
+              } else {
+                // Süreli mesaj seçenekleri göster
+                const seconds = prompt('Mesajın kaç saniye sonra silinmesini istersiniz?\nÖrnek: 5, 10, 30, 60 (1 dakika), 3600 (1 saat), 86400 (1 gün)');
+                if (seconds) {
+                  const secs = parseInt(seconds);
+                  if (!isNaN(secs) && secs > 0) {
+                    setSelfDestructEnabled(true);
+                    setSelfDestructSeconds(secs);
+                  }
+                }
+              }
+            }}
+            className={`p-2.5 rounded-xl transition-all active:scale-95 flex-shrink-0 ${selfDestructEnabled 
+              ? 'text-orange-400 bg-orange-500/20 hover:bg-orange-500/30' 
+              : 'text-gray-400 hover:text-primary hover:bg-primary/10'
+            }`}
+            title="Süreli mesaj"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </button>
+
+          {/* Text Input - Telegram Style */}
           <div className="flex-1 relative min-w-0" style={{ zIndex: 10000, position: 'relative', overflow: 'visible' }}>
             <textarea
               ref={textareaRef}
@@ -1546,6 +2728,23 @@ export default function SohbetPage() {
               onChange={(e) => {
                 const value = e.target.value;
                 setInputText(value);
+                
+                // Yazıyor... durumunu güncelle
+                if (value.trim() && typingTimeout) {
+                  clearTimeout(typingTimeout);
+                }
+                
+                // Typing indicator gönder (debounce)
+                const timeout = setTimeout(() => {
+                  fetch('/api/messages/typing', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ groupId: selectedTab, typing: true }),
+                    credentials: 'include',
+                  }).catch(console.error);
+                }, 500);
+                
+                setTypingTimeout(timeout);
                 
                 // @mention kontrolü - cursor position'ı al
                 const cursorPos = e.target.selectionStart || value.length;
@@ -1644,10 +2843,12 @@ export default function SohbetPage() {
                 }
               }}
               onFocus={(e) => {
-                // Klavye açıldığında textarea'yı görünür yap
-                setTimeout(() => {
-                  e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                }, 300);
+                // Sadece mobilde (klavye açılınca) textarea'yı görünür yap
+                if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                  setTimeout(() => {
+                    e.target.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                  }, 300);
+                }
               }}
               onKeyDown={(e) => {
                 // Mention listesi açıksa
@@ -1671,9 +2872,9 @@ export default function SohbetPage() {
                   sendMessage();
                 }
               }}
-              placeholder="Mesaj yazın..."
+              placeholder={selectedRecipient ? `${getUserFullDisplayName(selectedRecipient)}'e özel mesaj yazın...` : "Mesaj yazın..."}
               rows={1}
-              className="w-full px-2 md:px-4 py-2 md:py-3 pr-8 md:pr-11 border border-primary text-white bg-background rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary/50 resize-none overflow-hidden shadow-inner text-sm leading-6"
+              className="w-full px-4 py-3 pr-12 border-0 text-white bg-background-secondary/80 backdrop-blur-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none overflow-hidden shadow-inner text-sm leading-relaxed placeholder:text-gray-500"
               style={{ 
                 wordBreak: 'normal',
                 overflowWrap: 'break-word',
@@ -1682,26 +2883,27 @@ export default function SohbetPage() {
                 hyphens: 'none',
                 minWidth: 0,
                 boxSizing: 'border-box',
+                maxHeight: '120px',
               }}
             />
             
-            {/* Emoji Picker - Textarea içinde absolute positioned */}
-            <div className="absolute right-2 md:right-3 top-1/2 -translate-y-1/2 z-10" ref={emojiPickerRef}>
+            {/* Emoji Picker - Telegram Style */}
+            <div className="absolute right-3 top-1/2 -translate-y-1/2 z-10" ref={emojiPickerRef}>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   setShowEmojiPicker(!showEmojiPicker);
                 }}
-                className="p-1 text-gray-400 hover:text-primary hover:bg-background/50 rounded-lg transition pointer-events-auto"
+                className="p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all active:scale-95 pointer-events-auto"
                 title="Emoji"
                 type="button"
               >
-                <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </button>
               {showEmojiPicker && (
-                <div className="absolute bottom-full mb-2 right-0" style={{ zIndex: 99999, position: 'absolute', transform: 'translateZ(0)', isolation: 'isolate' }}>
+                <div className="absolute bottom-full mb-2 right-0 shadow-2xl rounded-2xl overflow-hidden" style={{ zIndex: 99999, position: 'absolute', transform: 'translateZ(0)', isolation: 'isolate' }}>
                   <EmojiPicker
                     onEmojiClick={(emojiData: EmojiClickData) => {
                       setInputText(prev => prev + emojiData.emoji);
@@ -1710,6 +2912,8 @@ export default function SohbetPage() {
                     theme={Theme.DARK}
                     width={350}
                     height={400}
+                    previewConfig={{ showPreview: false }}
+                    skinTonesDisabled
                   />
                 </div>
               )}
@@ -1803,12 +3007,12 @@ export default function SohbetPage() {
                 </button>
               )}
 
-              {/* Gönder Butonu - Yazı varken göster */}
-              {(inputText.trim() || replyingTo) && (
+              {/* Gönder Butonu - Telegram/WhatsApp Style */}
+              {(inputText.trim() || replyingTo || forwardingMessage) && (
                 <button
                   onClick={() => sendMessage()}
                   disabled={isSending}
-                  className="p-2.5 md:p-3 bg-primary text-white rounded-full hover:bg-primary/90 transition shadow-lg hover:shadow-xl hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex-shrink-0"
+                  className="p-3 bg-gradient-to-br from-primary to-primary/90 text-white rounded-xl hover:from-primary/90 hover:to-primary/80 transition-all shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex-shrink-0"
                   title="Gönder"
                 >
                   {isSending ? (
@@ -1817,8 +3021,8 @@ export default function SohbetPage() {
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
                   ) : (
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
                     </svg>
                   )}
                 </button>
@@ -1828,6 +3032,261 @@ export default function SohbetPage() {
           </div>
         )}
       </div>
+
+      {/* Media Viewer Modal - Telegram Style */}
+      {showMediaViewer && selectedMedia && (
+        <div 
+          className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[99999] flex items-center justify-center animate-in fade-in duration-200"
+          onClick={() => setShowMediaViewer(false)}
+        >
+          <button
+            onClick={() => setShowMediaViewer(false)}
+            className="absolute top-4 right-4 p-3 bg-black/50 hover:bg-black/70 rounded-full text-white transition z-10"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          
+          {selectedMedia.type === 'image' && (
+            <img
+              src={selectedMedia.url}
+              alt="Görüntüle"
+              className="max-w-full max-h-full object-contain"
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
+          
+          {selectedMedia.type === 'video' && (
+            <video
+              src={selectedMedia.url}
+              controls
+              autoPlay
+              className="max-w-full max-h-full"
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
+          
+          {/* Navigation Arrows */}
+          {mediaGallery.length > 1 && (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const currentIndex = mediaGallery.findIndex(m => m.url === selectedMedia.url);
+                  const prevIndex = currentIndex > 0 ? currentIndex - 1 : mediaGallery.length - 1;
+                  setSelectedMedia({ url: mediaGallery[prevIndex].url, type: mediaGallery[prevIndex].type });
+                }}
+                className="absolute left-4 top-1/2 -translate-y-1/2 p-3 bg-black/50 hover:bg-black/70 rounded-full text-white transition z-10"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const currentIndex = mediaGallery.findIndex(m => m.url === selectedMedia.url);
+                  const nextIndex = currentIndex < mediaGallery.length - 1 ? currentIndex + 1 : 0;
+                  setSelectedMedia({ url: mediaGallery[nextIndex].url, type: mediaGallery[nextIndex].type });
+                }}
+                className="absolute right-4 top-1/2 -translate-y-1/2 p-3 bg-black/50 hover:bg-black/70 rounded-full text-white transition z-10"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Private Message Dialog - Telegram Style */}
+      {showPrivateMessageDialog && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-background-secondary rounded-2xl border border-primary/20 shadow-2xl max-w-md w-full max-h-[80vh] overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-gray-700/50 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white">Özel Mesaj Gönder</h2>
+              <button
+                onClick={() => {
+                  setShowPrivateMessageDialog(false);
+                  setSelectedRecipient(null);
+                }}
+                className="p-2 text-gray-400 hover:text-white hover:bg-background-tertiary rounded-lg transition"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="p-4 overflow-y-auto custom-scrollbar flex-1">
+              <input
+                type="text"
+                placeholder="Kullanıcı ara..."
+                onChange={(e) => {
+                  const query = e.target.value.toLowerCase();
+                  setFilteredUsers(users.filter(user => {
+                    const rutbe = (user.rutbe || '').toLowerCase();
+                    const isim = (user.isim || '').toLowerCase();
+                    const soyisim = (user.soyisim || '').toLowerCase();
+                    const fullName = `${rutbe} ${isim} ${soyisim}`.trim().toLowerCase();
+                    return rutbe.includes(query) || isim.includes(query) || soyisim.includes(query) || fullName.includes(query);
+                  }).slice(0, 20));
+                }}
+                className="w-full px-4 py-2.5 bg-background border border-gray-700 rounded-xl text-white mb-4 focus:outline-none focus:ring-2 focus:ring-primary placeholder:text-gray-500"
+              />
+              
+              <div className="space-y-1">
+                {filteredUsers.map((user) => (
+                  <button
+                    key={user.id}
+                    onClick={() => {
+                      setSelectedRecipient(user);
+                      setShowPrivateMessageDialog(false);
+                    }}
+                    className="w-full p-3 hover:bg-primary/10 rounded-xl transition-all flex items-center gap-3 text-left active:scale-[0.98]"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
+                      {user.isim || user.soyisim 
+                        ? `${(user.isim || '').charAt(0).toUpperCase()}${(user.soyisim || '').charAt(0).toUpperCase()}`
+                        : user.username.charAt(0).toUpperCase()
+                      }
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-white truncate">
+                        {getUserFullDisplayName(user)}
+                      </div>
+                      <div className="text-xs text-gray-400 truncate">
+                        @{user.username}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Call Dialog - Telegram Style */}
+      {showCallDialog && !selectedRecipient && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-background-secondary rounded-2xl border border-primary/20 shadow-2xl max-w-md w-full p-6">
+            <div className="text-center mb-6">
+              <div className={`w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center ${callType === 'audio' ? 'bg-primary/20' : 'bg-primary/20'}`}>
+                {callType === 'audio' ? (
+                  <svg className="w-10 h-10 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                  </svg>
+                ) : (
+                  <svg className="w-10 h-10 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                )}
+              </div>
+              <h2 className="text-xl font-bold text-white mb-2">
+                {callType === 'audio' ? 'Sesli Arama' : 'Görüntülü Arama'}
+              </h2>
+              <p className="text-gray-400 text-sm mb-4">
+                Önce bir alıcı seçmeniz gerekiyor
+              </p>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowCallDialog(false);
+                  setCallType(null);
+                }}
+                className="flex-1 px-4 py-3 bg-background-tertiary text-white rounded-xl hover:bg-gray-700 transition font-semibold"
+              >
+                İptal
+              </button>
+              <button
+                onClick={() => {
+                  setShowCallDialog(false);
+                  setCallType(null);
+                  setShowPrivateMessageDialog(true);
+                }}
+                className="flex-1 px-4 py-3 bg-primary text-white rounded-xl hover:bg-primary/90 transition font-semibold"
+              >
+                Alıcı Seç
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Incoming Call Dialog */}
+      {incomingCall && !activeCall && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-[99999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-background-secondary rounded-2xl border border-primary/20 shadow-2xl max-w-md w-full p-6">
+            <div className="text-center mb-6">
+              <div className={`w-24 h-24 mx-auto mb-4 rounded-full flex items-center justify-center bg-primary/20 animate-pulse`}>
+                {incomingCall.type === 'audio' ? (
+                  <svg className="w-12 h-12 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                  </svg>
+                ) : (
+                  <svg className="w-12 h-12 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                )}
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-2">
+                {incomingCall.type === 'audio' ? 'Sesli Arama' : 'Görüntülü Arama'}
+              </h2>
+              <p className="text-gray-400">
+                Gelen çağrı...
+              </p>
+            </div>
+            
+            <div className="flex gap-3">
+              <button
+                onClick={rejectCall}
+                className="flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl transition font-semibold"
+              >
+                Reddet
+              </button>
+              <button
+                onClick={acceptCall}
+                className="flex-1 px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl transition font-semibold"
+              >
+                Kabul Et
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active Call - Video */}
+      {activeCall && activeCall.type === 'video' && (
+        <VideoCall
+          socket={socket}
+          callId={activeCall.id}
+          callerId={activeCall.callerId}
+          receiverId={activeCall.receiverId}
+          isCaller={activeCall.isCaller}
+          onEndCall={endCall}
+          onAccept={activeCall.isCaller ? undefined : acceptCall}
+          onReject={activeCall.isCaller ? undefined : rejectCall}
+        />
+      )}
+
+      {/* Active Call - Audio */}
+      {activeCall && activeCall.type === 'audio' && (
+        <AudioCall
+          socket={socket}
+          callId={activeCall.id}
+          callerId={activeCall.callerId}
+          receiverId={activeCall.receiverId}
+          isCaller={activeCall.isCaller}
+          onEndCall={endCall}
+          onAccept={activeCall.isCaller ? undefined : acceptCall}
+          onReject={activeCall.isCaller ? undefined : rejectCall}
+        />
+      )}
     </div>
   );
 }

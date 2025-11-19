@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
         readableFields = readPerm.readableFields;
       } else if (readPerm === true) {
         // Tüm alanlar okunabilir
-        readableFields = ['id', 'username', 'rutbe', 'membershipStatus', 'isim', 'soyisim', 'tckn', 'telefon', 'evAdresi', 'yakiniIsmi', 'yakiniTelefon', 'ruhsatSeriNo', 'kanGrubu', 'createdAt', 'updatedAt'];
+        readableFields = ['id', 'username', 'rutbe', 'membershipStatus', 'isim', 'soyisim', 'tckn', 'telefon', 'evAdresi', 'yakiniIsmi', 'yakiniTelefon', 'ruhsatSeriNo', 'kanGrubu', 'plaka', 'ehliyetTuru', 'createdAt', 'updatedAt'];
       }
     }
 
@@ -50,6 +50,8 @@ export async function GET(request: NextRequest) {
         yakiniTelefon: true,
         ruhsatSeriNo: true,
         kanGrubu: true,
+        plaka: true,
+        ehliyetTuru: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -84,6 +86,9 @@ export async function GET(request: NextRequest) {
       if (readableFields.includes('yakiniTelefon')) filtered.yakiniTelefon = user.yakiniTelefon;
       if (readableFields.includes('ruhsatSeriNo')) filtered.ruhsatSeriNo = user.ruhsatSeriNo;
       if (readableFields.includes('kanGrubu')) filtered.kanGrubu = user.kanGrubu;
+      // plaka ve ehliyetTuru her zaman eklenmeli (yeni alanlar)
+      filtered.plaka = user.plaka;
+      filtered.ehliyetTuru = user.ehliyetTuru || [];
       if (readableFields.includes('createdAt')) filtered.createdAt = user.createdAt;
       if (readableFields.includes('updatedAt')) filtered.updatedAt = user.updatedAt;
       
@@ -147,6 +152,8 @@ export async function POST(request: NextRequest) {
       yakiniTelefon,
       ruhsatSeriNo,
       kanGrubu,
+      plaka,
+      ehliyetTuru,
     } = body;
 
     // Kullanıcı adı ve şifre zorunlu
@@ -189,6 +196,8 @@ export async function POST(request: NextRequest) {
         yakiniTelefon: null,
         ruhsatSeriNo: null,
         kanGrubu: null,
+        plaka: null,
+        ehliyetTuru: [],
       },
       select: {
         id: true,
@@ -205,6 +214,8 @@ export async function POST(request: NextRequest) {
         yakiniTelefon: true,
         ruhsatSeriNo: true,
         kanGrubu: true,
+        plaka: true,
+        ehliyetTuru: true,
         createdAt: true,
       },
     });

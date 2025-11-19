@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { signIn, signOut } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { Button } from '@/components/ui';
 import Image from 'next/image';
 
 export default function LoginPage() {
@@ -45,6 +46,11 @@ export default function LoginPage() {
       });
 
       if (result?.error) {
+        if (result.error === '2FA_REQUIRED_BUT_NOT_SETUP') {
+          setError('Sistem genelinde 2FA aktif. Lütfen önce 2FA\'nızı kurun.');
+          setIsLoading(false);
+          return;
+        }
         if (result.error === '2FA_TOKEN_REQUIRED') {
           // Username/password doğru ama 2FA token gerekiyor
           // Username ve password'u geçici olarak sakla (sadece 2FA verification için)
@@ -107,25 +113,34 @@ export default function LoginPage() {
                   return;
                 }
                 
-                // 2FA durumunu kontrol et
+                // Global 2FA durumunu kontrol et - sadece global 2FA açıksa 2FA kontrolü yap
                 try {
-                  const statusRes = await fetch('/api/two-factor/status', {
+                  const globalStatusRes = await fetch('/api/settings/2fa/global-status', {
                     credentials: 'include',
                   });
-                  if (statusRes.ok) {
-                    const status = await statusRes.json();
-                    if (!status.isSetup || !status.enabled) {
-                      // 2FA kurulmamış, setup sayfasına yönlendir
-                      window.location.href = '/settings/two-factor?required=true';
-                      return;
-                    } else {
-                      // 2FA kurulmuş ama token verilmemiş, verification sayfasına yönlendir
-                      sessionStorage.setItem('pendingLoginUsername', username);
-                      sessionStorage.setItem('pendingLoginPassword', password);
-                      window.location.href = '/auth/verify-2fa';
-                      return;
+                  const globalStatus = globalStatusRes.ok ? await globalStatusRes.json() : { enabled: false };
+                  
+                  // Global 2FA açıksa kullanıcının 2FA durumunu kontrol et
+                  if (globalStatus.enabled) {
+                    const statusRes = await fetch('/api/two-factor/status', {
+                      credentials: 'include',
+                    });
+                    if (statusRes.ok) {
+                      const status = await statusRes.json();
+                      if (!status.isSetup || !status.enabled) {
+                        // Global 2FA açık ama kullanıcının 2FA'sı yok, setup sayfasına yönlendir
+                        window.location.href = '/settings/two-factor?required=true';
+                        return;
+                      } else {
+                        // Global 2FA açık ve kullanıcının 2FA'sı var ama token verilmemiş, verification sayfasına yönlendir
+                        sessionStorage.setItem('pendingLoginUsername', username);
+                        sessionStorage.setItem('pendingLoginPassword', password);
+                        window.location.href = '/auth/verify-2fa';
+                        return;
+                      }
                     }
                   }
+                  // Global 2FA kapalıysa hiçbir 2FA kontrolü yapma, direkt dashboard'a git
                 } catch (error) {
                   console.error('2FA status check error:', error);
                 }
@@ -224,13 +239,9 @@ export default function LoginPage() {
           )}
 
           <div>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30"
-            >
+            <Button type="submit" disabled={isLoading} variant="primary" className="w-full justify-center py-3">
               {isLoading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
-            </button>
+            </Button>
           </div>
         </form>
       </div>

@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
+import { Button } from '@/components/ui';
 import { redirect } from 'next/navigation';
 import { hasPermission } from '@/lib/auth';
 import PDFViewer from '@/components/PDFViewer';
+import ReadStatusIndicator from '@/components/ReadStatusIndicator';
 
 interface Research {
   id: string;
@@ -48,6 +50,14 @@ export default function ArastirmalarPage() {
   const [viewingPdfUrl, setViewingPdfUrl] = useState<string | null>(null);
   const [viewingPdfTitle, setViewingPdfTitle] = useState<string>('');
   const [pdfViewerOpen, setPdfViewerOpen] = useState(false);
+  const [readStatuses, setReadStatuses] = useState<Record<string, boolean>>({}); // researchId -> isRead
+  const [modalImageExpanded, setModalImageExpanded] = useState(false);
+
+  // Dosya türü yardımcıları
+  const getFileExt = (name?: string | null) => (name || '').toLowerCase().split('.').pop() || '';
+  const isImageExt = (ext: string) => ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'avif'].includes(ext);
+  const isVideoExt = (ext: string) => ['mp4', 'webm', 'ogg', 'mov', 'mkv'].includes(ext);
+  const isAudioExt = (ext: string) => ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'].includes(ext);
 
   // Arama ve filtreleme state
   const [searchTerm, setSearchTerm] = useState('');
@@ -64,11 +74,35 @@ export default function ArastirmalarPage() {
     removeFile: false,
   });
 
+  // Tüm araştırmaları okundu işaretle
+  const markAllAsRead = async () => {
+    if (!session?.user?.id) return;
+
+    try {
+      const res = await fetch('/api/read-status', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ eventType: 'research' }),
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('Mark all researches as read failed:', errorData);
+      }
+    } catch (error) {
+      console.error('Mark all researches as read error:', error);
+    }
+  };
+
   useEffect(() => {
     if (status === 'unauthenticated') {
       redirect('/login');
     }
     if (session) {
+      // Sayfa yüklendiğinde tüm araştırmaları okundu işaretle
+      markAllAsRead();
       fetchResearches();
       fetchUsers();
     }
@@ -113,10 +147,68 @@ export default function ArastirmalarPage() {
 
       const data = await res.json();
       setResearches(data);
+      // Okuma durumlarını getir
+      if (session?.user?.id) {
+        await fetchReadStatuses(data);
+      }
     } catch (error: any) {
       setError(error.message || 'Bir hata oluştu');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Okuma durumlarını getir
+  const fetchReadStatuses = async (researchesList: Research[]) => {
+    if (!session?.user?.id) return;
+
+    try {
+      const statusPromises = researchesList.map(async (research) => {
+        const res = await fetch(`/api/read-status?eventType=research&eventId=${research.id}`, {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const isRead = data.readBy.some((user: any) => user.id === session.user.id);
+          return { researchId: research.id, isRead };
+        }
+        return { researchId: research.id, isRead: false };
+      });
+
+      const statuses = await Promise.all(statusPromises);
+      const statusMap: Record<string, boolean> = {};
+      statuses.forEach(({ researchId, isRead }) => {
+        statusMap[researchId] = isRead;
+      });
+      setReadStatuses(statusMap);
+    } catch (error) {
+      console.error('Read statuses fetch error:', error);
+    }
+  };
+
+  // Okundu işaretle
+  const markAsRead = async (researchId: string) => {
+    if (!session?.user?.id) return;
+
+    try {
+      await fetch('/api/read-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          eventType: 'research',
+          eventId: researchId,
+        }),
+        credentials: 'include',
+      });
+
+      setReadStatuses((prev) => ({
+        ...prev,
+        [researchId]: true,
+      }));
+    } catch (error) {
+      console.error('Mark as read error:', error);
     }
   };
 
@@ -255,6 +347,8 @@ export default function ArastirmalarPage() {
   };
 
   const handleView = async (researchId: string) => {
+    // Research açıldığında otomatik okundu işaretle
+    markAsRead(researchId);
     try {
       const res = await fetch(`/api/researches/${researchId}`, {
         credentials: 'include',
@@ -262,6 +356,7 @@ export default function ArastirmalarPage() {
       if (res.ok) {
         const data = await res.json();
         setViewingResearch(data);
+        setModalImageExpanded(false);
         setShowViewModal(true);
       }
     } catch (error) {
@@ -359,7 +454,7 @@ export default function ArastirmalarPage() {
       <div className="flex justify-between items-center gap-4 flex-wrap">
         <h1 className="text-3xl font-bold text-white">Araştırmalar</h1>
         {canCreate && (
-          <button
+          <Button
             onClick={() => {
               setFormData({
                 title: '',
@@ -369,10 +464,11 @@ export default function ArastirmalarPage() {
               });
               setShowAddModal(true);
             }}
-            className="px-4 py-2 bg-primary text-white rounded-md hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/30 whitespace-nowrap"
+            variant="primary"
+            className="px-4 py-2 whitespace-nowrap"
           >
             Araştırma Ekle
-          </button>
+          </Button>
         )}
       </div>
 
@@ -485,13 +581,30 @@ export default function ArastirmalarPage() {
               >
                 <div className="flex justify-between items-start">
                   <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-white mb-2">
-                      {searchTerm.trim() ? (
-                        highlightText(research.title, searchTerm)
-                      ) : (
-                        research.title
+                    <div className="flex items-center gap-2 mb-2">
+                      {/* Yeşil nokta - okunmamışsa göster, başlığın önünde */}
+                      {!(readStatuses[research.id] || false) && (
+                        <div className="w-5 h-5 bg-green-500 rounded-full flex-shrink-0" />
                       )}
-                    </h3>
+                      <h3 className="text-lg font-semibold text-white">
+                        {searchTerm.trim() ? (
+                          highlightText(research.title, searchTerm)
+                        ) : (
+                          research.title
+                        )}
+                      </h3>
+                      <ReadStatusIndicator
+                        eventType="research"
+                        eventId={research.id}
+                        isRead={readStatuses[research.id] || false}
+                        onMarkAsRead={() => {
+                          setReadStatuses((prev) => ({
+                            ...prev,
+                            [research.id]: true,
+                          }));
+                        }}
+                      />
+                    </div>
                     <div className="text-sm text-gray-400 space-y-1">
                       <p>
                         Yazan: {getUserName(research.creator)}
@@ -504,24 +617,21 @@ export default function ArastirmalarPage() {
                           {research.content.substring(0, 150)}{research.content.length > 150 ? '...' : ''}
                         </p>
                       )}
-                      {research.fileName && (
-                        <button
-                          className="text-xs text-gray-500 mt-1 hover:text-gray-400 transition-colors cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const fileType = research.fileName?.toLowerCase().endsWith('.pdf') ? 'pdf' : 'other';
-                            if (fileType === 'pdf') {
-                              setViewingPdfUrl(`/api/researches/${research.id}/file`);
-                              setViewingPdfTitle(research.fileName || research.title);
-                              setPdfViewerOpen(true);
-                            } else {
-                              window.open(`/api/researches/${research.id}/file`, '_blank');
-                            }
-                          }}
-                        >
-                          📎 {research.fileName}
-                        </button>
-                      )}
+
+                      {/* Dosya özeti - kartta sadece tür etiketi (thumbnail yok) */}
+                      {research.fileName && (() => {
+                        const ext = getFileExt(research.fileName);
+                        const label = isImageExt(ext)
+                          ? '1 fotoğraf'
+                          : isVideoExt(ext)
+                          ? '1 video'
+                          : isAudioExt(ext)
+                          ? '1 ses dosyası'
+                          : ext === 'pdf'
+                          ? '1 PDF'
+                          : '1 belge';
+                        return <div className="mt-2 text-xs text-gray-400">📎 {label}</div>;
+                      })()}
                       {/* PDF içeriğinden eşleşen cümleleri göster (sadece "all" seçiliyse) */}
                       {searchTerm.trim() && searchType === 'all' && research.fileContent && (() => {
                         const hasContentMatch = research.fileContent.toLowerCase().includes(searchTerm.toLowerCase());
@@ -879,33 +989,45 @@ export default function ArastirmalarPage() {
                     {viewingResearch.content}
                   </div>
                 </div>
-                {viewingResearch.fileName && (
-                  <div>
-                    <p className="text-sm font-medium text-gray-300 mb-2">Dosya:</p>
-                    {viewingResearch.fileName.toLowerCase().endsWith('.pdf') ? (
-                      <button
-                        onClick={() => {
-                          setViewingPdfUrl(`/api/researches/${viewingResearch.id}/file`);
-                          setViewingPdfTitle(viewingResearch.fileName || viewingResearch.title);
-                          setPdfViewerOpen(true);
-                          setShowViewModal(false);
-                        }}
-                        className="block w-full px-3 py-2 border border-gray-700 text-white bg-background rounded-md hover:bg-background-tertiary transition-all text-sm text-left"
-                      >
-                        {viewingResearch.fileName}
-                      </button>
-                    ) : (
-                      <a
-                        href={`/api/researches/${viewingResearch.id}/file`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block px-3 py-2 border border-gray-700 text-white bg-background rounded-md hover:bg-background-tertiary transition-all text-sm"
-                      >
-                        {viewingResearch.fileName}
-                      </a>
-                    )}
-                  </div>
-                )}
+                {viewingResearch.fileName && (() => {
+                  const ext = getFileExt(viewingResearch.fileName);
+                  const url = `/api/researches/${viewingResearch.id}/file`;
+                  return (
+                    <div>
+                      <p className="text-sm font-medium text-gray-300 mb-2">Dosya:</p>
+                      {ext === 'pdf' ? (
+                        <object data={url} type="application/pdf" className="w-full h-[70vh] rounded-md border border-gray-700 bg-black">
+                          <a href={url} target="_blank" rel="noopener noreferrer" className="underline text-primary">
+                            PDF'i açmak için tıklayın
+                          </a>
+                        </object>
+                      ) : isImageExt(ext) ? (
+                        !modalImageExpanded ? (
+                          <div className="w-full max-w-sm mx-auto aspect-square rounded-md border border-gray-700 bg-black flex items-center justify-center cursor-zoom-in" onClick={() => setModalImageExpanded(true)}>
+                            <img src={url} alt={viewingResearch.fileName || 'Dosya'} className="w-[70%] h-[70%] object-contain" />
+                          </div>
+                        ) : (
+                          <div className="w-full max-h-[70vh] rounded-md border border-gray-700 bg-black flex items-center justify-center cursor-zoom-out" onClick={() => setModalImageExpanded(false)}>
+                            <img src={url} alt={viewingResearch.fileName || 'Dosya'} className="max-h-[70vh] w-full object-contain" />
+                          </div>
+                        )
+                      ) : isVideoExt(ext) ? (
+                        <video src={url} controls className="w-full max-h-[70vh] rounded-md border border-gray-700 bg-black" />
+                      ) : isAudioExt(ext) ? (
+                        <audio src={url} controls className="w-full" />
+                      ) : (
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block px-3 py-2 border border-gray-700 text-white bg-background rounded-md hover:bg-background-tertiary transition-all text-sm"
+                        >
+                          {viewingResearch.fileName}
+                        </a>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="flex justify-end pt-4">

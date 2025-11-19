@@ -164,11 +164,74 @@ export async function GET(request: NextRequest) {
             },
           },
         },
+        forwardedFrom: {
+          include: {
+            sender: {
+              select: {
+                id: true,
+                username: true,
+                rutbe: true,
+                isim: true,
+                soyisim: true,
+              },
+            },
+          },
+        },
+        reactions: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                rutbe: true,
+                isim: true,
+                soyisim: true,
+              },
+            },
+          },
+        },
+        readReceipts: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                rutbe: true,
+                isim: true,
+                soyisim: true,
+              },
+            },
+          },
+        },
+        starredBy: {
+          select: {
+            id: true,
+            userId: true,
+          },
+        },
       },
       orderBy: {
         createdAt: 'desc',
       },
       take: limit,
+    });
+
+    // Kullanıcının yıldızladığı mesajları işaretle
+    const starredMessageIds = await prisma.starredMessage.findMany({
+      where: {
+        userId: session.user.id,
+        messageId: {
+          in: messages.map(m => m.id),
+        },
+      },
+      select: {
+        messageId: true,
+      },
+    });
+
+    const starredIds = new Set(starredMessageIds.map(s => s.messageId));
+    messages.forEach(message => {
+      (message as any).isStarred = starredIds.has(message.id);
     });
 
     // Tarih sırasına göre tersine çevir (en eskiden en yeniye)
@@ -200,6 +263,7 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const type = (formData.get('type') as string) || 'text';
     let content = formData.get('content') as string | null;
+    const forwardedFromId = formData.get('forwardedFromId') as string | null;
     
     // Mention validasyonu - sadece gerçek kullanıcılar mention edilebilir
     if (content && type === 'text') {
@@ -287,14 +351,18 @@ export async function POST(request: NextRequest) {
 
     let mediaPath: string | null = null;
     let mediaUrl: string | null = null;
+    let fileName: string | null = null;
+    let fileSize: number | null = null;
+    let fileType: string | null = null;
 
     // Medya dosyası varsa kaydet
     const file = formData.get('file') as File | null;
     if (file && file.size > 0) {
-      // Dosya boyutu kontrolü (20MB)
-      if (file.size > 20 * 1024 * 1024) {
+      // Dosya boyutu kontrolü (100MB - dosyalar için daha büyük limit)
+      const maxSize = type === 'document' || type === 'file' ? 100 * 1024 * 1024 : 20 * 1024 * 1024;
+      if (file.size > maxSize) {
         return NextResponse.json(
-          { error: 'Dosya boyutu 20MB\'dan küçük olmalıdır' },
+          { error: `Dosya boyutu ${maxSize / 1024 / 1024}MB'dan küçük olmalıdır` },
           { status: 400 }
         );
       }
@@ -305,15 +373,19 @@ export async function POST(request: NextRequest) {
       }
 
       const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const fileName = `${Date.now()}-${sanitizedFileName}`;
-      const filePath = join(uploadsDir, fileName);
+      const timestampedFileName = `${Date.now()}-${sanitizedFileName}`;
+      const filePath = join(uploadsDir, timestampedFileName);
 
       const bytes = await file.arrayBuffer();
       const buffer = Buffer.from(bytes);
       await writeFile(filePath, buffer);
 
-      mediaPath = `uploads/messages/${fileName}`;
-      mediaUrl = `/api/messages/media/${fileName}`;
+      mediaPath = `uploads/messages/${timestampedFileName}`;
+      mediaUrl = `/api/messages/media/${timestampedFileName}`;
+      fileName = file.name;
+      fileSize = file.size;
+      fileType = file.type;
+      
     }
 
     // Canlı konum süresi dolma zamanı hesapla
@@ -329,11 +401,15 @@ export async function POST(request: NextRequest) {
         content: content || null,
         mediaPath,
         mediaUrl,
+        fileName,
+        fileSize,
+        fileType,
         latitude,
         longitude,
         locationName: locationName || null,
         liveLocationExpiresAt,
         repliedToId: repliedToId || null,
+        forwardedFromId: forwardedFromId || null,
         groupId: groupId || null, // null = LPBH/HERKES
         senderId: session.user.id,
       },
@@ -367,6 +443,59 @@ export async function POST(request: NextRequest) {
             },
           },
         },
+        forwardedFrom: {
+          include: {
+            sender: {
+              select: {
+                id: true,
+                username: true,
+                rutbe: true,
+                isim: true,
+                soyisim: true,
+              },
+            },
+          },
+        },
+        reactions: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                rutbe: true,
+                isim: true,
+                soyisim: true,
+              },
+            },
+          },
+        },
+        readReceipts: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                username: true,
+                rutbe: true,
+                isim: true,
+                soyisim: true,
+              },
+            },
+          },
+        },
+        starredBy: {
+          select: {
+            id: true,
+            userId: true,
+          },
+        },
+      },
+    });
+    
+    // Okundu bilgisi oluştur (gönderen kendi mesajını okumuş sayılır)
+    await prisma.readReceipt.create({
+      data: {
+        messageId: message.id,
+        userId: session.user.id,
       },
     });
 

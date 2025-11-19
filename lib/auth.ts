@@ -40,6 +40,9 @@ export function hasPermission(permissions: any, resource: string, action?: strin
   return Boolean(resourcePerms[action]);
 }
 
+// Server epoch: changes on each server start to invalidate existing JWTs
+const SERVER_SESSION_EPOCH = process.env.SESSION_EPOCH || `${Date.now()}`;
+
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -98,9 +101,46 @@ export const authOptions: NextAuthOptions = {
         // approved, pending_info, pending_approval durumlarında login başarılı
         // Yönlendirme frontend'de yapılacak
 
-        // 2FA kontrolü - username/password doğru, şimdi 2FA kontrolü yap
-        if (user.twoFactorEnabled && user.twoFactorSecret) {
-          // 2FA aktifse, token zorunlu
+        // Global 2FA ayarını kontrol et - cache'i bypass etmek için raw query kullan
+        // Bu sayede sunucuyu yeniden başlatmaya gerek kalmadan anında değişiklikler yansır
+        let isGlobal2FAEnabled = false;
+        try {
+          const global2FASettingResult = await prisma.$queryRaw<Array<{ value: string }>>`
+            SELECT value FROM system_settings WHERE key = 'twoFactorEnabled' LIMIT 1
+          `;
+          isGlobal2FAEnabled = global2FASettingResult.length > 0 && global2FASettingResult[0]?.value === 'true';
+        } catch (error) {
+          // Eğer tablo yoksa veya hata varsa, global 2FA kapalı kabul et
+          console.error('Error checking global 2FA setting:', error);
+          isGlobal2FAEnabled = false;
+        }
+
+        // Debug: 2FA durumunu logla
+        console.log('2FA Check:', {
+          username: user.username,
+          global2FAEnabled: isGlobal2FAEnabled,
+          userTwoFactorEnabled: user.twoFactorEnabled,
+          userHasSecret: !!user.twoFactorSecret,
+        });
+
+        // ÖNEMLİ: Sadece global 2FA açıksa 2FA kontrolü yap
+        // Eğer global 2FA kapalıysa, kullanıcının kendi 2FA'sı olsa bile kontrol etme
+        if (isGlobal2FAEnabled) {
+          // Global 2FA aktifse kontrol yap
+          
+          // Kullanıcının 2FA'sı kurulu mu kontrol et
+          if (!user.twoFactorEnabled || !user.twoFactorSecret) {
+            // Kullanıcının 2FA'sı yoksa, kurmasını iste
+            console.error('2FA required but not setup:', {
+              username: user.username,
+              global2FAEnabled: isGlobal2FAEnabled,
+              userTwoFactorEnabled: user.twoFactorEnabled,
+              userHasSecret: !!user.twoFactorSecret,
+            });
+            throw new Error('2FA_REQUIRED_BUT_NOT_SETUP');
+          }
+
+          // Kullanıcının 2FA'sı var, token zorunlu
           if (!credentials.twoFactorToken) {
             // Token yoksa özel bir hata fırlat
             // Bu durumda kullanıcı verification sayfasına yönlendirilecek
@@ -131,7 +171,7 @@ export const authOptions: NextAuthOptions = {
             throw new Error('2FA_TOKEN_INVALID');
           }
         }
-        // 2FA kurulmamışsa normal şekilde devam et
+        // Global 2FA kapalıysa hiçbir 2FA kontrolü yapma, direkt geç
 
         // Başarılı login'i logla (IP/UA sonra eklenecek)
         const fullName = user.isim && user.soyisim ? `${user.isim} ${user.soyisim}` : '';
@@ -159,7 +199,8 @@ export const authOptions: NextAuthOptions = {
   },
   session: {
     strategy: 'jwt',
-    maxAge: 60 * 60 * 24, // 24 saat (pencere kapandığında client-side'da temizlenecek)
+    // Standard session duration
+    maxAge: 60 * 60 * 24, // 24 hours
   },
   callbacks: {
     async jwt({ token, user, trigger }) {
@@ -187,6 +228,8 @@ export const authOptions: NextAuthOptions = {
             },
             userApproval: { approve: true, reject: true },
             meetings: { create: true, read: true, update: true, delete: true },
+            documents: { create: true, read: true, update: true, delete: true },
+            polls: { create: true, read: true, update: true, delete: true },
             events: { create: true, read: true, update: true, delete: true },
             assignments: { create: true, read: true, update: true, delete: true },
             routes: { create: true, read: true, update: true, delete: true },
@@ -195,6 +238,7 @@ export const authOptions: NextAuthOptions = {
             activityLogs: { read: true },
             researches: { create: true, read: true, update: true, delete: true },
             messages: { create: true, read: true, update: true, delete: true },
+            citizenDatabase: { read: true },
           };
         } else if (user.rutbe) {
           // Rütbe yetkilerini ekle
@@ -248,6 +292,8 @@ export const authOptions: NextAuthOptions = {
                 },
                 userApproval: { approve: true, reject: true },
                 meetings: { create: true, read: true, update: true, delete: true },
+                documents: { create: true, read: true, update: true, delete: true },
+                polls: { create: true, read: true, update: true, delete: true },
                 events: { create: true, read: true, update: true, delete: true },
                 assignments: { create: true, read: true, update: true, delete: true },
                 routes: { create: true, read: true, update: true, delete: true },
@@ -274,9 +320,17 @@ export const authOptions: NextAuthOptions = {
         }
       }
       
+      // Attach the server epoch to token. If server restarts, epoch changes and token becomes invalid.
+      (token as any).epoch = SERVER_SESSION_EPOCH;
       return token;
     },
     async session({ session, token }) {
+      // If token epoch mismatches current server epoch, force session invalidation by clearing critical fields
+      if ((token as any)?.epoch !== SERVER_SESSION_EPOCH) {
+        // Clearing user id will cause middleware authorized() to fail and redirect to /login
+        delete (session as any).user;
+        return session;
+      }
       if (session.user) {
         session.user.id = token.id as string;
         session.user.username = token.username as string;

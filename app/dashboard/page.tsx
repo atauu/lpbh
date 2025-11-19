@@ -15,6 +15,15 @@ interface Meeting {
   createdAt: string;
 }
 
+interface Poll {
+  id: string;
+  title: string;
+  details?: string | null;
+  type: 'yesno' | 'multiple';
+  allowCustomOption: boolean;
+  createdAt: string;
+}
+
 interface Event {
   id: string;
   title: string;
@@ -68,6 +77,9 @@ interface Announcement {
   importance: 'düşük' | 'normal' | 'yüksek';
   createdBy: string;
   createdAt: string;
+  scheduledAt?: string | null;
+  notifyBefore: boolean;
+  status: 'published' | 'scheduled';
   creator: {
     id: string;
     username: string;
@@ -100,8 +112,10 @@ export default function DashboardPage() {
   const [pendingAssignments, setPendingAssignments] = useState<Assignment[]>([]);
   const [recentAnnouncements, setRecentAnnouncements] = useState<Announcement[]>([]);
   const [recentResearches, setRecentResearches] = useState<Research[]>([]);
+  const [recentPolls, setRecentPolls] = useState<Poll[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [countdowns, setCountdowns] = useState<Record<string, number>>({}); // announcementId -> remaining seconds
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -111,6 +125,57 @@ export default function DashboardPage() {
       fetchDashboardData();
     }
   }, [session, status]);
+
+  // Geri sayım güncellemesi
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const newCountdowns: Record<string, number> = {};
+      let shouldRefresh = false;
+      
+      recentAnnouncements.forEach((announcement) => {
+        if (announcement.status === 'scheduled' && announcement.scheduledAt) {
+          const scheduledTime = new Date(announcement.scheduledAt).getTime();
+          const remaining = Math.max(0, Math.floor((scheduledTime - now) / 1000));
+          newCountdowns[announcement.id] = remaining;
+          
+          // Eğer süre dolduysa dashboard verilerini yeniden yükle
+          if (remaining === 0 && countdowns[announcement.id] && countdowns[announcement.id] > 0) {
+            shouldRefresh = true;
+          }
+        }
+      });
+      
+      setCountdowns(newCountdowns);
+      
+      if (shouldRefresh) {
+        fetchDashboardData();
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recentAnnouncements, countdowns]);
+
+  // Geri sayım formatla
+  const formatCountdown = (seconds: number): string => {
+    if (seconds <= 0) return 'Yayınlandı';
+    
+    const days = Math.floor(seconds / 86400);
+    const hours = Math.floor((seconds % 86400) / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (days > 0) {
+      return `${days}g ${hours}s ${minutes}dk`;
+    } else if (hours > 0) {
+      return `${hours}s ${minutes}dk ${secs}sn`;
+    } else if (minutes > 0) {
+      return `${minutes}dk ${secs}sn`;
+    } else {
+      return `${secs}sn`;
+    }
+  };
   
   // URL'den hata parametresi varsa göster
   useEffect(() => {
@@ -190,6 +255,18 @@ export default function DashboardPage() {
           })
           .slice(0, 5);
         setRecentAnnouncements(sorted);
+      }
+
+      // Son oylamaları getir
+      const pollsRes = await fetch('/api/polls', {
+        credentials: 'include',
+      });
+      if (pollsRes.ok) {
+        const pollsData = await pollsRes.json();
+        const sorted = (pollsData || [])
+          .sort((a: Poll, b: Poll) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 5);
+        setRecentPolls(sorted);
       }
 
       // Son araştırmaları getir
@@ -292,7 +369,7 @@ export default function DashboardPage() {
   if (status === 'loading' || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-gray-400">Yükleniyor...</div>
+        <div className="text-text-tertiary">Yükleniyor...</div>
       </div>
     );
   }
@@ -308,7 +385,7 @@ export default function DashboardPage() {
     <div className="space-y-4 lg:space-y-6">
       {/* Hoş Geldiniz */}
       <div>
-        <h1 className="text-xl lg:text-2xl font-bold text-white">
+        <h1 className="text-xl lg:text-2xl font-bold text-text-primary">
           Hoş Geldiniz {userRutbe && <span className="text-primary font-rye">{userRutbe}</span>} {fullName}
         </h1>
       </div>
@@ -321,9 +398,9 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-2 lg:grid-cols-2 gap-2 lg:gap-6">
         {/* Son Toplantı Kayıtları */}
-        <div className="bg-background-secondary rounded-md border border-gray-700 overflow-hidden backdrop-blur-sm">
-          <div className="p-2 lg:p-4 border-b border-gray-700 flex justify-between items-center">
-            <h2 className="text-xs lg:text-xl font-semibold text-white">Son Toplantı Kayıtları</h2>
+        <div className="bg-background-secondary rounded-md border border-border overflow-hidden backdrop-blur-sm">
+          <div className="p-2 lg:p-4 border-b border-border flex justify-between items-center">
+            <h2 className="text-xs lg:text-xl font-semibold text-text-primary">Son Toplantı Kayıtları</h2>
             <Link
               href="/dashboard/toplanti-kayitlari"
               className="text-primary text-xs lg:text-sm hover:text-primary/80 transition-all"
@@ -332,7 +409,7 @@ export default function DashboardPage() {
             </Link>
           </div>
           {recentMeetings.length === 0 ? (
-            <div className="p-4 lg:p-8 text-center text-gray-400">
+            <div className="p-4 lg:p-8 text-center text-text-tertiary">
               <p className="text-xs">Henüz toplantı kaydı eklenmemiş</p>
             </div>
           ) : (
@@ -343,8 +420,8 @@ export default function DashboardPage() {
                   href="/dashboard/toplanti-kayitlari"
                   className="block p-2 lg:p-4 hover:bg-background-tertiary transition-all"
                 >
-                  <h3 className="text-white font-medium mb-1 text-xs lg:text-base">{meeting.title}</h3>
-                  <p className="text-xs lg:text-sm text-gray-400">
+                  <h3 className="text-text-primary font-medium mb-1 text-xs lg:text-base">{meeting.title}</h3>
+                  <p className="text-xs lg:text-sm text-text-tertiary">
                     {formatDate(meeting.meetingDate)}
                   </p>
                 </Link>
@@ -354,9 +431,9 @@ export default function DashboardPage() {
         </div>
 
         {/* Gelecek Etkinlikler */}
-        <div className="bg-background-secondary rounded-md border border-gray-700 overflow-hidden backdrop-blur-sm">
-          <div className="p-2 lg:p-4 border-b border-gray-700 flex justify-between items-center">
-            <h2 className="text-xs lg:text-xl font-semibold text-white">Gelecek Etkinlikler</h2>
+        <div className="bg-background-secondary rounded-md border border-border overflow-hidden backdrop-blur-sm">
+          <div className="p-2 lg:p-4 border-b border-border flex justify-between items-center">
+            <h2 className="text-xs lg:text-xl font-semibold text-text-primary">Gelecek Etkinlikler</h2>
             <Link
               href="/dashboard/etkinlikler"
               className="text-primary text-xs lg:text-sm hover:text-primary/80 transition-all"
@@ -365,7 +442,7 @@ export default function DashboardPage() {
             </Link>
           </div>
           {upcomingEvents.length === 0 ? (
-            <div className="p-4 lg:p-8 text-center text-gray-400">
+            <div className="p-4 lg:p-8 text-center text-text-tertiary">
               <p className="text-xs">Henüz gelecek etkinlik eklenmemiş</p>
             </div>
           ) : (
@@ -376,11 +453,11 @@ export default function DashboardPage() {
                   href="/dashboard/etkinlikler"
                   className="block p-2 lg:p-4 hover:bg-background-tertiary transition-all"
                 >
-                  <h3 className="text-white font-medium mb-1 text-xs lg:text-base">{event.title}</h3>
-                  <p className="text-xs lg:text-sm text-gray-400">
+                  <h3 className="text-text-primary font-medium mb-1 text-xs lg:text-base">{event.title}</h3>
+                  <p className="text-xs lg:text-sm text-text-tertiary">
                     {formatDateTime(event.eventDate)}
                   </p>
-                  <p className="text-xs lg:text-sm text-gray-400">
+                  <p className="text-xs lg:text-sm text-text-tertiary">
                     {event.location}
                   </p>
                 </Link>
@@ -392,9 +469,9 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-2 lg:grid-cols-2 gap-2 lg:gap-6">
         {/* Son Duyurular */}
-        <div className="bg-background-secondary rounded-md border border-gray-700 overflow-hidden backdrop-blur-sm">
-          <div className="p-2 lg:p-4 border-b border-gray-700 flex justify-between items-center">
-            <h2 className="text-xs lg:text-xl font-semibold text-white">Son Duyurular</h2>
+        <div className="bg-background-secondary rounded-md border border-border overflow-hidden backdrop-blur-sm">
+          <div className="p-2 lg:p-4 border-b border-border flex justify-between items-center">
+            <h2 className="text-xs lg:text-xl font-semibold text-text-primary">Son Duyurular</h2>
             <Link
               href="/dashboard/duyurular"
               className="text-primary text-xs lg:text-sm hover:text-primary/80 transition-all"
@@ -403,47 +480,77 @@ export default function DashboardPage() {
             </Link>
           </div>
           {recentAnnouncements.length === 0 ? (
-            <div className="p-4 lg:p-8 text-center text-gray-400">
+            <div className="p-4 lg:p-8 text-center text-text-tertiary">
               <p className="text-xs">Henüz duyuru eklenmemiş</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-700">
-              {recentAnnouncements.map((announcement) => (
-                <Link
-                  key={announcement.id}
-                  href="/dashboard/duyurular"
-                  className="block p-2 lg:p-4 hover:bg-background-tertiary transition-all"
-                >
-                  <div className="flex items-start gap-2 mb-1">
-                    <h3 className="text-white font-medium flex-1 text-xs lg:text-base">{announcement.title}</h3>
-                    <span className={`px-1 py-0.5 text-[10px] lg:text-xs rounded border flex-shrink-0 ${
-                      announcement.importance === 'yüksek' 
-                        ? 'bg-red-900/20 text-red-400 border-red-500/30' 
-                        : announcement.importance === 'düşük'
-                        ? 'bg-gray-700/20 text-gray-400 border-gray-600/30'
-                        : 'bg-yellow-900/20 text-yellow-400 border-yellow-500/30'
-                    }`}>
-                      {announcement.importance === 'yüksek' ? 'Yük' : announcement.importance === 'düşük' ? 'Düş' : 'Nor'}
-                    </span>
-                  </div>
-                  <p className="text-[10px] lg:text-sm text-gray-400 line-clamp-2 mb-1">
-                    {announcement.content}
-                  </p>
-                  <div className="text-[10px] lg:text-xs text-gray-500">
-                    <p className="truncate">
-                      {announcement.creator.rutbe || ''} {announcement.creator.isim || ''} {announcement.creator.soyisim || ''} - {formatDateTime(announcement.createdAt)}
-                    </p>
-                  </div>
-                </Link>
-              ))}
+              {recentAnnouncements
+                .map((announcement) => {
+                  const isScheduled = announcement.status === 'scheduled';
+                  const isScheduledWithNotify = isScheduled && announcement.notifyBefore;
+                  const remainingSeconds = countdowns[announcement.id] ?? (announcement.scheduledAt 
+                    ? Math.max(0, Math.floor((new Date(announcement.scheduledAt).getTime() - Date.now()) / 1000))
+                    : 0);
+
+                  return (
+                    <Link
+                      key={announcement.id}
+                      href="/dashboard/duyurular"
+                      className={`block p-2 lg:p-4 hover:bg-background-tertiary transition-all ${isScheduledWithNotify ? 'bg-blue-900/10 border-l-4 border-l-blue-500' : ''}`}
+                    >
+                      <div className="flex items-start gap-2 mb-1">
+                        <h3 className="text-text-primary font-medium flex-1 text-xs lg:text-base">{announcement.title}</h3>
+                        <div className="flex flex-col gap-1 items-end flex-shrink-0">
+                          <span className={`px-1.5 py-0.5 text-[10px] lg:text-xs rounded border whitespace-nowrap ${
+                            announcement.importance === 'yüksek' 
+                              ? 'bg-red-900/20 text-red-400 border-red-500/30' 
+                              : announcement.importance === 'düşük'
+                              ? 'bg-gray-700/20 text-gray-400 border-gray-600/30'
+                              : 'bg-yellow-900/20 text-yellow-400 border-yellow-500/30'
+                          }`}>
+                            {announcement.importance === 'yüksek' ? 'Yüksek' : announcement.importance === 'düşük' ? 'Düşük' : 'Normal'}
+                          </span>
+                          {isScheduled && (
+                            <span className="px-1.5 py-0.5 text-[10px] lg:text-xs bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded whitespace-nowrap">
+                              Planlı
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {isScheduledWithNotify && (
+                        <div className="mb-2 p-2 bg-blue-500/10 border border-blue-500/30 rounded-md">
+                          <div className="flex items-center gap-1 mb-1">
+                            <svg className="w-3 h-3 lg:w-4 lg:h-4 text-blue-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <p className="text-[10px] lg:text-xs font-medium text-blue-400">
+                              Kalan Süre: <span className="font-bold">{formatCountdown(remainingSeconds)}</span>
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      {!isScheduledWithNotify && (
+                        <p className="text-[10px] lg:text-sm text-text-tertiary line-clamp-2 mb-1">
+                          {announcement.content}
+                        </p>
+                      )}
+                      <div className="text-[10px] lg:text-xs text-gray-500">
+                        <p className="truncate">
+                          {announcement.creator.rutbe || ''} {announcement.creator.isim || ''} {announcement.creator.soyisim || ''} - {isScheduled && announcement.scheduledAt ? formatDateTime(announcement.scheduledAt) : formatDateTime(announcement.createdAt)}
+                        </p>
+                      </div>
+                    </Link>
+                  );
+                })}
             </div>
           )}
         </div>
 
         {/* Bekleyen Görevlendirmeler */}
-        <div className="bg-background-secondary rounded-md border border-gray-700 overflow-hidden backdrop-blur-sm">
-          <div className="p-2 lg:p-4 border-b border-gray-700 flex justify-between items-center">
-            <h2 className="text-xs lg:text-xl font-semibold text-white">Bekleyen Görevlendirmeler</h2>
+        <div className="bg-background-secondary rounded-md border border-border overflow-hidden backdrop-blur-sm">
+          <div className="p-2 lg:p-4 border-b border-border flex justify-between items-center">
+            <h2 className="text-xs lg:text-xl font-semibold text-text-primary">Bekleyen Görevlendirmeler</h2>
             <Link
               href="/dashboard/gorevlendirmeler"
               className="text-primary text-xs lg:text-sm hover:text-primary/80 transition-all"
@@ -452,7 +559,7 @@ export default function DashboardPage() {
             </Link>
           </div>
           {pendingAssignments.length === 0 ? (
-            <div className="p-4 lg:p-8 text-center text-gray-400">
+            <div className="p-4 lg:p-8 text-center text-text-tertiary">
               <p className="text-xs">Bekleyen görevlendirme yok</p>
             </div>
           ) : (
@@ -465,8 +572,8 @@ export default function DashboardPage() {
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex-1">
-                      <h3 className="text-white font-medium mb-1 text-xs lg:text-base">{assignment.task}</h3>
-                      <div className="text-xs lg:text-sm text-gray-400 space-y-0.5">
+                      <h3 className="text-text-primary font-medium mb-1 text-xs lg:text-base">{assignment.task}</h3>
+                      <div className="text-xs lg:text-sm text-text-tertiary space-y-0.5">
                         <p>
                           Görevlendirilen: {getUserName(assignment.assignee)}
                         </p>
@@ -490,10 +597,59 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-1 gap-2 lg:gap-6">
+        {/* Son Oylamalar */}
+        <div className="bg-background-secondary rounded-md border border-border overflow-hidden backdrop-blur-sm">
+          <div className="p-2 lg:p-4 border-b border-border flex justify-between items-center">
+            <h2 className="text-xs lg:text-xl font-semibold text-text-primary">Son Oylamalar</h2>
+            <Link
+              href="/dashboard/oylamalar"
+              className="text-primary text-xs lg:text-sm hover:text-primary/80 transition-all"
+            >
+              Tümünü Gör
+            </Link>
+          </div>
+          {recentPolls.length === 0 ? (
+            <div className="p-4 lg:p-8 text-center text-text-tertiary">
+              <p className="text-xs">Henüz oylama eklenmemiş</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-700">
+              {recentPolls.map((poll) => (
+                <Link
+                  key={poll.id}
+                  href="/dashboard/oylamalar"
+                  className="block p-2 lg:p-4 hover:bg-background-tertiary transition-all"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <h3 className="text-text-primary font-medium mb-1 text-xs lg:text-base">
+                        {poll.title}
+                      </h3>
+                      {poll.details ? (
+                        <p className="text-[10px] lg:text-sm text-text-tertiary line-clamp-2 mb-1">
+                          {poll.details}
+                        </p>
+                      ) : null}
+                      <p className="text-[10px] lg:text-xs text-gray-500">
+                        {formatDateTime(poll.createdAt)} • {poll.type === 'yesno' ? 'Evet/Hayır' : 'Çoklu Seçenek'}
+                      </p>
+                    </div>
+                    <span className="text-[10px] lg:text-xs px-1.5 py-0.5 rounded border border-border text-text-tertiary">
+                      {poll.allowCustomOption ? 'Özel seçenek açık' : 'Özel seçenek kapalı'}
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-1 gap-2 lg:gap-6">
         {/* Son Araştırmalar */}
-        <div className="bg-background-secondary rounded-md border border-gray-700 overflow-hidden backdrop-blur-sm">
-          <div className="p-2 lg:p-4 border-b border-gray-700 flex justify-between items-center">
-            <h2 className="text-xs lg:text-xl font-semibold text-white">Son Araştırmalar</h2>
+        <div className="bg-background-secondary rounded-md border border-border overflow-hidden backdrop-blur-sm">
+          <div className="p-2 lg:p-4 border-b border-border flex justify-between items-center">
+            <h2 className="text-xs lg:text-xl font-semibold text-text-primary">Son Araştırmalar</h2>
             <Link
               href="/dashboard/arastirmalar"
               className="text-primary text-xs lg:text-sm hover:text-primary/80 transition-all"
@@ -502,7 +658,7 @@ export default function DashboardPage() {
             </Link>
           </div>
           {recentResearches.length === 0 ? (
-            <div className="p-4 lg:p-8 text-center text-gray-400">
+            <div className="p-4 lg:p-8 text-center text-text-tertiary">
               <p className="text-xs">Henüz araştırma eklenmemiş</p>
             </div>
           ) : (
@@ -513,8 +669,8 @@ export default function DashboardPage() {
                   href="/dashboard/arastirmalar"
                   className="block p-2 lg:p-4 hover:bg-background-tertiary transition-all"
                 >
-                  <h3 className="text-white font-medium mb-1 text-xs lg:text-base">{research.title}</h3>
-                  <p className="text-[10px] lg:text-sm text-gray-400 line-clamp-2 mb-1">
+                  <h3 className="text-text-primary font-medium mb-1 text-xs lg:text-base">{research.title}</h3>
+                  <p className="text-[10px] lg:text-sm text-text-tertiary line-clamp-2 mb-1">
                     {research.content}
                   </p>
                   <div className="flex items-center gap-2">
